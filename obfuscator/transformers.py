@@ -1,0 +1,646 @@
+import base64
+import gzip
+import marshal
+import math
+import random
+import string
+import zlib
+from _ast import Module, Call
+from types import CodeType
+from renamer import *
+
+
+class Transformer:
+    def __init__(self, config):
+        self.config = config
+
+    def transform(self, ast: AST) -> AST:
+        return ast
+
+
+class MemberRenamer(Transformer):
+    def __init__(self, config):
+        super().__init__(config)
+
+    def transform(self, ast: AST) -> AST:
+        generator = MappingGenerator(True, True, True)
+        generator.visit(ast)
+        MappingApplicator(generator.mappings).visit(ast)
+        return ast
+
+
+class Collector(Transformer, NodeTransformer):
+    class _const:
+        def to_ast_loader(self):
+            return Constant(self.b)
+
+        def __init__(self, b):
+            self.b = b
+
+        def __eq__(self, other):
+            return hasattr(other, "b") and other.b == self.b
+
+    class _resfunc(_const):
+        def to_ast_loader(self):
+            return Attribute(
+                value=Name(self.owner, Load()),
+                attr=self.name,
+                ctx=Load()
+            )
+
+        def __init__(self, owner, name):
+            self.owner = owner
+            self.name = name
+            super().__init__(f"{owner}.{name}")
+
+    def __init__(self, config):
+        self.in_formatted_str = False
+        self.collect_consts = config["collect_consts"].value
+        self.found = []
+        super().__init__(config)
+
+    def visit_JoinedStr(self, node: JoinedStr) -> Any:
+        self.in_formatted_str = True
+        r = self.generic_visit(node)
+        self.in_formatted_str = False
+        return r
+
+    def visit_FormattedValue(self, node: FormattedValue) -> Any:
+        prev = self.in_formatted_str
+        self.in_formatted_str = False
+        r = self.generic_visit(node)
+        self.in_formatted_str = prev
+        return r
+
+    def visit_Constant(self, node: Constant) -> Any:
+        if self.collect_consts:
+            val = node.value
+            ref = self._const(val)
+            if ref in self.found:
+                idx = self.found.index(ref)
+            else:
+                idx = len(self.found)
+                self.found.append(ref)
+            if self.in_formatted_str:
+                return FormattedValue(
+                    value=Subscript(
+                        value=Name('names', Load()),
+                        slice=Constant(idx),
+                        ctx=Load()
+                    ),
+                    conversion=-1
+                )
+            else:
+                return Subscript(
+                    value=Name('names', Load()),
+                    slice=Constant(idx),
+                    ctx=Load()
+                )
+        return self.generic_visit(node)
+
+    def visit_Call(self, node: Call) -> Any:
+        r = self.generic_visit(node)
+        if isinstance(node.func, Name) and isinstance(node.func.ctx, Load):
+            strified_name = node.func.id
+            ref = self._const(strified_name)
+            if ref in self.found:  # Already in list, use present index
+                idx = self.found.index(ref)
+            else:
+                idx = len(self.found)
+                self.found.append(ref)
+            node.func = Call(  # -> eval(names[idx])
+                func=Name('eval', Load()),
+                args=[
+                    Subscript(
+                        value=Name('names', ctx=Load()),
+                        slice=Constant(idx),
+                        ctx=Load()
+                    )
+                ],
+                keywords=[]
+            )
+        elif isinstance(node.func, Attribute):
+            attrib_owner = node.func.value
+            # Can only estimate constants as of now, python is fucking weakly typed so i can't estimate return values
+            # or similar shit
+            # fuck you python
+            if isinstance(attrib_owner, Constant):
+                const_value = attrib_owner.value
+                the_type = type(const_value).__name__
+                ref = self._resfunc(the_type, node.func.attr)
+                if ref in self.found:
+                    idx = self.found.index(ref)
+                else:
+                    idx = len(self.found)
+                    self.found.append(ref)
+                node.func = Subscript(
+                    value=Name('names', Load()),
+                    slice=Constant(idx),
+                    ctx=Load()
+                )
+                node.args.insert(0, attrib_owner)
+        return r
+
+    def transform(self, ast: AST) -> AST:
+        self.found = []
+        ast = self.visit(ast)
+        new_ast: Module = Module(
+            body=[
+                Assign(  # names = [x for x in t.found]
+                    targets=[
+                        Name('names', Store())
+                    ],
+                    value=List(
+                        elts=[x.to_ast_loader() for x in self.found],  # construct string array from found
+                        ctx=Load()
+                    )
+                ),
+                *ast.body  # copy old body over
+            ],
+            type_ignores=[]
+        )
+        return new_ast
+
+
+class StringSplitter(Transformer, NodeTransformer):
+    def __init__(self, config):
+        super().__init__(config)
+        self.in_fstring = False
+
+    def visit_JoinedStr(self, node: JoinedStr) -> Any:
+        self.in_fstring = True
+        t = self.generic_visit(node)
+        self.in_fstring = False
+        return t
+
+    def visit_Constant(self, node: Constant) -> Any:
+        r = self.generic_visit(node)
+        if type(node.value) == str:
+            value: str = node.value
+            chars = list(value)
+            if len(chars) <= 1:  # 1 or 0
+                v = Constant(chars[0] if len(chars) == 1 else "")
+            else:
+                v = BinOp(
+                    left=Call(
+                        func=Name('chr', Load()),
+                        args=[
+                            Constant(ord(chars[0]))
+                        ],
+                        keywords=[]
+                    ),
+                    op=Add(),
+                    right=Call(
+                        func=Name('chr', Load()),
+                        args=[
+                            Constant(ord(chars[1]))
+                        ],
+                        keywords=[]
+                    )
+                )
+                if len(chars) > 2:
+                    for i in range(2, len(chars)):
+                        v = BinOp(
+                            left=v,
+                            op=Add(),
+                            right=Call(
+                                func=Name('chr', Load()),
+                                args=[
+                                    Constant(ord(chars[i]))
+                                ],
+                                keywords=[]
+                            )
+                        )
+            if self.in_fstring:
+                v = FormattedValue(
+                    value=v,
+                    conversion=-1
+                )
+            return v
+        elif type(node.value) == bytes:
+            value: bytes = node.value
+            ints = [x for x in value]
+            v = Call(  # bytes(*(ints,)) -> simplifyable to bytes(ints)
+                func=Name('bytes', Load()),
+                args=[
+                    Starred(
+                        Tuple(
+                            [
+                                List(
+                                    [Constant(x) for x in ints],
+                                    Load()
+                                )
+                            ],
+                            Load()
+                        ),
+                        Load()
+                    )
+                ],
+                keywords=[]
+            )
+            if self.in_fstring:
+                v = FormattedValue(  # f"{v}"
+                    v,
+                    -1
+                )
+            return v
+        return r
+
+    def transform(self, ast: AST) -> AST:
+        return self.visit(ast)
+
+
+class IntObfuscator(Transformer, NodeTransformer):
+    def visit_Constant(self, node: Constant) -> Any:
+        s = self.generic_visit(node)
+        if type(node.value) == int:
+            ic: int = node.value
+            is_signed = ic < 0  # signed bit needs to be set only if ic is negative
+            rdx = math.ceil((ic.bit_length() + (1 if is_signed else 0)) / 8)  # add said sign bit if the int is signed
+            int_bytes = ic.to_bytes(rdx, "little", signed=is_signed)
+            off = random.randint(255 + rdx, 999)  # need to keep at least rdx indexes free
+            encoded = "".join([format(off - (x + i), "03d") for (x, i) in zip(int_bytes, range(len(int_bytes)))])
+            return Call(  # int.from_bytes(..., "little", signed=is_signed)
+                func=Attribute(Name('int', Load()), 'from_bytes', Load()),  # int.from_bytes
+                args=[
+                    Call(  # map(lambda O: 255-int(O), map(''.join, zip(*[iter(encoded)]*3)))
+                        func=Name('map', Load()),
+                        args=[
+                            Lambda(  # lambda O, i: ...
+                                args=arguments(
+                                    posonlyargs=[],
+                                    args=[
+                                        arg('O'),
+                                        arg('i')
+                                    ],
+                                    kwonlyargs=[],
+                                    kw_defaults=[],
+                                    defaults=[]),
+                                body=BinOp(  # off - int(O)
+                                    left=Constant(value=off),
+                                    op=Sub(),
+                                    right=BinOp(
+                                        left=Call(  # int(O)
+                                            func=Name('int', Load()),
+                                            args=[
+                                                Name('O', Load())],
+                                            keywords=[]),
+                                        op=Add(),
+                                        right=Name('i', Load())
+                                    )
+                                )),
+                            Call(
+                                func=Name('map', Load()),
+                                args=[
+                                    Attribute(
+                                        value=Constant(value=''),
+                                        attr='join',
+                                        ctx=Load()),
+                                    Call(
+                                        func=Name('zip', Load()),
+                                        args=[
+                                            Starred(
+                                                value=BinOp(
+                                                    left=List(
+                                                        elts=[
+                                                            Call(
+                                                                func=Name('iter', Load()),
+                                                                args=[
+                                                                    Constant(encoded)
+                                                                ],
+                                                                keywords=[])],
+                                                        ctx=Load()),
+                                                    op=Mult(),
+                                                    right=Constant(value=3)),
+                                                ctx=Load())],
+                                        keywords=[])],
+                                keywords=[]),
+                            Call(
+                                func=Name('range', Load()),  # rangeg(math.floor(len(encoded)/3))
+                                args=[
+                                    Constant(math.floor(len(encoded) / 3))
+                                ],
+                                keywords=[]
+                            )
+                        ],
+                        keywords=[]),
+                    Constant(value='little')],
+                keywords=[
+                    keyword(
+                        arg='signed',
+                        value=Constant(is_signed)
+                    )
+                ])
+        return s
+
+    def transform(self, ast: AST) -> AST:
+        return self.visit(ast)
+
+
+class ReplaceAttribs(Transformer, NodeTransformer):
+
+    def visit_Assign(self, node: Assign) -> Any:
+        if len(node.targets) == 1:
+            attrib = node.targets[0]
+            if isinstance(attrib, Attribute):
+                parent = attrib.value
+                name = attrib.attr
+                value = node.value
+                return Expr(Call(
+                    func=Name('setattr', Load()),
+                    args=[
+                        parent,
+                        Constant(name),
+                        value
+                    ],
+                    keywords=[]
+                ))
+        return self.generic_visit(node)
+
+    def transform(self, ast: AST) -> AST:
+        return self.visit(ast)
+
+
+def rnd_name():
+    return "".join(random.choices(["l", "I", "M", "N"], k=32))
+
+
+class ConstructDynamicCodeObject(Transformer):
+    _ctype_arg_names = [
+        "co_argcount",
+        "co_posonlyargcount",
+        "co_kwonlyargcount",
+        "co_nlocals",
+        "co_stacksize",
+        ("co_flags", 0),
+        "co_code",
+        "co_consts",
+        "co_names",
+        "co_varnames",
+        ("co_filename", ""),
+        ("co_name", ""),
+        ("co_qualname", ""),
+        ("co_firstlineno", 0),
+        ("co_linetable", b""),
+        "co_exceptiontable",
+        "co_freevars",
+        "co_cellvars"
+    ]
+
+    def __init__(self, config):
+        self.code_obj_dict = dict()
+        super().__init__(config)
+
+    def get_all_code_objects(self, args):
+        # args = self.args_from_co(code)
+        all_cos = []
+        for x in args:
+            if isinstance(x, list) or isinstance(x, tuple):
+                all_cos = [*self.get_all_code_objects(x), *all_cos]
+            elif isinstance(x, CodeType):
+                all_cos.append(x)
+                all_cos = [*self.get_all_code_objects(self.args_from_co(x)), *all_cos]
+        return all_cos
+
+    def args_from_co(self, code: CodeType):
+        return [getattr(code, x) if not isinstance(x, tuple) else x[1] for x in self._ctype_arg_names]
+
+    def _parse_const(self, el: Any, ctx):
+        if isinstance(el, tuple):
+            return Tuple(
+                elts=[self._parse_const(x, ctx) for x in el],
+                ctx=ctx
+            )
+        elif isinstance(el, list):
+            return List(
+                elts=[self._parse_const(x, ctx) for x in el],
+                ctx=ctx
+            )
+        elif isinstance(el, CodeType):
+            if el in self.code_obj_dict:  # we have a generator for this, use it
+                return Call(
+                    func=Name(self.code_obj_dict[el], Load()),
+                    args=[],
+                    keywords=[]
+                )
+            else:  # we dont have a generator? alright then, just marshal it
+                b = marshal.dumps(el)
+                return Call(
+                    func=Attribute(
+                        value=Call(
+                            func=Name('__import__', Load()),
+                            args=[
+                                Constant("marshal")
+                            ],
+                            keywords=[]
+                        ),
+                        attr="loads",
+                        ctx=Load()
+                    ),
+                    args=[
+                        Constant(b)
+                    ],
+                    keywords=[]
+                )
+        else:
+            return Constant(el)
+
+    def create_code_obj_loader(self, func_name: str, compiled_code_obj: CodeType) -> FunctionDef:
+        collected_args = self.args_from_co(compiled_code_obj)
+        loader_asm = []
+        # value_to_append = dict()
+        for i in range(len(collected_args)):  # go over each code object arg
+            v = collected_args[i]
+            if i > 0 and collected_args[i - 1] == collected_args[i]:  # is the one below us the same as this one?
+                elm: list = loader_asm[
+                    len(loader_asm) - 1].value.elts  # then expand the assignment to include us aswell
+                elm.insert(2, self._parse_const(v, Load()))
+                elm[len(elm) - 1].value.slice.lower.value += 1
+            else:  # if not, make the assignment
+                ass_statement = Assign(  # a = [*a[:i], <arg>, *a[i+1:]] -> insert us at i
+                    targets=[Name('a', Store())],
+                    value=List(
+                        elts=[
+                            Starred(Subscript(
+                                value=Name('a', Load()),
+                                slice=Slice(upper=Constant(i)),
+                                ctx=Load()
+                            ), Load()),
+                            self._parse_const(v, Load()),
+                            Starred(Subscript(
+                                value=Name('a', Load()),
+                                slice=Slice(lower=Constant(i + 1)),
+                                ctx=Load()
+                            ), Load())
+                        ],
+                        ctx=Load()
+                    )
+                )
+                # value_to_append[v] = ass_statement
+                loader_asm.append(ass_statement)
+        random.shuffle(loader_asm)
+        finished_asm = FunctionDef(
+            name=func_name,
+            args=arguments(posonlyargs=[],
+                           args=[],
+                           kwonlyargs=[],
+                           kw_defaults=[],
+                           defaults=[]),
+            decorator_list=[],
+            body=[
+                Assign(  # a = []
+                    targets=[Name('a', Store())],
+                    value=BinOp(
+                        left=List(
+                            elts=[Constant(None)],
+                            ctx=Load()
+                        ),
+                        op=Mult(),
+                        right=Constant(len(collected_args))
+                    )
+                ),
+                *loader_asm,
+                Return(
+                    Call(
+                        func=Call(
+                            func=Name('type', Load()),
+                            args=[
+                                Attribute(
+                                    value=Name('b', Load()),
+                                    attr='__code__',
+                                    ctx=Load()
+                                )
+                            ],
+                            keywords=[]
+                        ),
+                        args=[
+                            Starred(
+                                Name('a', Load()),
+                                Load()
+                            )
+                        ],
+                        keywords=[]
+                    )
+                )
+            ],
+            type_ignores=[]
+        )
+        return finished_asm
+
+    def transform(self, ast_mod: AST) -> Module:
+        ast_mod = fix_missing_locations(ast_mod)
+        compiled_code_obj: CodeType = compile(ast_mod, "", "exec", optimize=2)
+        all_code_objs = self.get_all_code_objects(self.args_from_co(compiled_code_obj))
+        loaders = []
+        for x in all_code_objs:  # create names first...
+            name = rnd_name()
+            self.code_obj_dict[x] = name
+        for x in all_code_objs:  # ... then use them
+            loaders.append(self.create_code_obj_loader(self.code_obj_dict[x], x))
+        main = rnd_name()
+        return Module(
+            type_ignores=[],
+            body=[
+                FunctionDef(
+                    name='b',
+                    args=arguments(
+                        posonlyargs=[],
+                        args=[],
+                        kwonlyargs=[],
+                        kw_defaults=[],
+                        defaults=[]),
+                    body=[Pass()],
+                    decorator_list=[]),
+                *loaders,
+                self.create_code_obj_loader(main, compiled_code_obj),
+                Expr(Call(
+                    func=Name('exec', Load()),
+                    args=[
+                        Call(
+                            func=Name(main, Load()),
+                            args=[],
+                            keywords=[]
+                        )
+                    ],
+                    keywords=[]
+                ))
+            ]
+        )
+
+
+def create_import(name):
+    return Call(
+        func=Name('__import__', Load()),
+        args=[Constant(name)],
+        keywords=[]
+    )
+
+
+class EncodeStrings(Transformer, NodeTransformer):
+    def __init__(self, config):
+        self.in_formatted_str = False
+        super().__init__(config)
+
+    def visit_JoinedStr(self, node: JoinedStr) -> Any:
+        self.in_formatted_str = True
+        r = self.generic_visit(node)
+        self.in_formatted_str = False
+        return r
+
+    # def visit_FormattedValue(self, node: FormattedValue) -> Any:
+    #     prev = self.in_formatted_str
+    #     self.in_formatted_str = False
+    #     r = self.generic_visit(node)
+    #     self.in_formatted_str = prev
+    #     return r
+
+    def visit_Constant(self, node: Constant) -> Any:
+        val = node.value
+        if isinstance(val, str):
+            encoded = base64.b64encode(val.encode("utf8"))
+            if self.in_formatted_str:  # can't use unicode chars in fstrings since these would lead to escapes
+                compressed = encoded
+            else:
+                compressed = zlib.compress(encoded, 9)
+        elif type(val) == bytes:
+            encoded = base64.b64encode(val)
+            if self.in_formatted_str:
+                compressed = encoded
+            else:
+                compressed = zlib.compress(encoded, 9)
+        else:
+            compressed = None
+        if compressed is not None:
+            t = Call(
+                func=Attribute(
+                    value=create_import("base64"),
+                    attr="b64decode",
+                    ctx=Load()
+                ),
+                args=[
+                    # We haven't compressed if we're in an fstr
+                    Call(
+                        func=Attribute(
+                            value=create_import("zlib"),
+                            attr="decompress",
+                            ctx=Load()
+                        ),
+                        args=[
+                            Constant(compressed)
+                        ],
+                        keywords=[]
+                    ) if not self.in_formatted_str else Constant(compressed)
+                ],
+                keywords=[]
+            )
+            if self.in_formatted_str:
+                t = FormattedValue(
+                    value=t,
+                    conversion=-1
+                )
+            return t
+        else:
+            return self.generic_visit(node)
+
+    def transform(self, ast: AST) -> AST:
+        return self.visit(ast)
