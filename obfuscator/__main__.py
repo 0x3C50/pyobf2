@@ -138,7 +138,7 @@ def go():
     except ValueError as e:
         if str(e) == "Unable to avoid backslash in f-string expression part":
             print("An error occured with re-parsing the python AST into source code. AST was not able to escape ASCII "
-                  "characters in an F-String express. Please check if you have any "
+                  "characters in an F-String expression. Please check if you have any "
                   "ASCII characters in F-Strings, and escape them manually.")
             print("Full error: ", e)
             return
