@@ -5,13 +5,25 @@ mapped_name_count = 0
 
 
 def random_mapping_name() -> str:
+    """
+    Generates a random mapping name
+    """
     global mapped_name_count
     mapped_name_count += 1
     return "_" * mapped_name_count
 
 
 class MappingGenerator(NodeVisitor):
+    """
+    A generator for mappings
+    """
+
     def remap_name_if_needed(self, old):
+        """
+        Remaps the given name to a new one, if the mappings contain a name for it
+        :param old: The old name
+        :return:    The remapped name or old if no mapping was found
+        """
         sorted_names = list(self.mappings.keys())
         # Sort by longest (most specific) path first
         sorted_names.sort(key=lambda v: grade_name_order(v.split(".")[1]), reverse=True)
@@ -35,6 +47,12 @@ class MappingGenerator(NodeVisitor):
         return old
 
     def __init__(self, methods, variables, args):
+        """
+        Initializes a new mapping generator
+        :param methods:  Remap methods
+        :param variables: Remap vars
+        :param args:  Remap method args
+        """
         self.config = {
             "methods": methods,
             "vars": variables,
@@ -67,10 +85,20 @@ class MappingGenerator(NodeVisitor):
         self.generic_visit(node)
 
     def print_mappings(self):
+        """
+        Prints all mappings
+        :return: Nothing
+        """
         for x in self.mappings.keys():
             print(f"{x} to {self.mappings[x]}")
 
     def put_name_if_absent(self, old, new):
+        """
+        Puts a new name if it doesn't already exist
+        :param old:  The old name
+        :param new:  The new name
+        :return: Nothing
+        """
         loc = "|".join(self.location_stack)
         full = f"var.{loc}.{old}"
         if full not in self.mappings:

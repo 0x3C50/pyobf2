@@ -1,4 +1,6 @@
 import ast
+import opcode
+import random
 
 _SINGLE_QUOTES = ("'", '"')
 _MULTI_QUOTES = ('"""', "'''")
@@ -51,3 +53,39 @@ class NonEscapingUnparser(getattr(ast, "_Unparser")):
                 assert len(possible_quotes[0]) == 3
                 escaped_string = escaped_string[:-1] + "\\" + escaped_string[-1]
         return escaped_string, possible_quotes
+
+
+def randomize_cache(bc: list[int]):
+    """
+    Randomizes empty "cache" slots after instructions. Assume the following bytecode:
+
+    116 1  ; LG 1 "print"
+
+    0 0 0 0 0 0 0 0 0 0 ; CACHE
+
+    100 3  ; LC 3 "abc"
+
+    166 1  ; PRECALL N_ARG 1
+
+    0 0    ; CACHE
+
+    171 1  ; CALL N_ARG 1
+
+    0 0 0 0 0 0 0 0 ; CACHE
+
+    Some instructions have designated "cache" slots after them, which are filled by the python interpreter to cache
+    information. These slots are not used otherwise, and can be anything, going into the interpreter. We set these slots
+    to random bytes, to confuse the reader.
+    :param bc: The bytecode
+    :return: Nothing
+    """
+    reader = 0
+    while reader < len(bc):
+        current = bc[reader]
+        reader += 2  # skip insn and arg, now at first cache
+        cache = opcode._inline_cache_entries[current]
+        print(f"opcode {current} ({opcode.opname[current]}), {cache} cache slots")
+        cache_bytes = cache * 2
+        for off in range(cache_bytes):
+            bc[reader + off] = random.randint(0, 255)
+        reader += cache_bytes

@@ -1,13 +1,12 @@
 import ast
-import codecs
 import os.path
 from ast import *
 
 from tomlkit import *
 
-from cfg import *
-
 import transformers as transf
+from cfg import *
+from util import NonEscapingUnparser
 
 config_file = "config.toml"
 
@@ -24,8 +23,8 @@ transformers = ConfigSegment(
     collect_method_calls=ConfigValue("Collects all method calls into a list and references them via eval()", True),
     remap_members=ConfigValue("Remaps all members (methods*, arguments, variables). Mostly stable, but can get funny "
                               "at times. * Methods in classes are not remapped due to inheritance issues", True),
-    collect_consts=ConfigValue("Collects all constant values into an array and replaces them with access to the array"
-                               , True),
+    collect_consts=ConfigValue("Collects all constant values into an array and replaces them with access to the array",
+                               True),
     change_ints=ConfigValue("Obscures int constants", True),
     encode_strings=ConfigValue("Encodes strings in base64 followed by level 9 zlib compression", True),
     simplify_strings=ConfigValue("Splits strings up into chars, then adds them back together at runtime. Useful with "
@@ -33,7 +32,10 @@ transformers = ConfigSegment(
     remove_direct_attrib_set=ConfigValue("Removes direct attribute setting and replaces it with setattr()", True),
     wrap_in_code_obj=ConfigValue("Wraps the entire program in a dynamically created code object at runtime. It is "
                                  "recommended to do another pass after this, since it exposes string constants and "
-                                 "similar", True)
+                                 "similar", True),
+    wrap_in_code_obj_and_encrypt=ConfigValue("In addition to wrapping the entire program in dynamically created code "
+                                             "objects, also encrypts the bytecode. Only works if wrap_in_code_obj is "
+                                             "enabled", True)
 )
 
 all_config_segments = [general_settings, transformers]
@@ -106,24 +108,13 @@ def recursive_attrib_resolve(inp: Attribute):
     return t
 
 
-def transform_source(ast: AST) -> AST:
+def transform_source(c_ast: AST) -> AST:
     for t in all_transformers:
         if transformers[t[1]].value:
-            ast = t[0](transformers).transform(ast)
+            c_ast = t[0](transformers).transform(c_ast)
             print(f"Executed transformer {t[0].__name__}")
-    # if transformers["simplify_strings"].value:
-    #     ast = transf.StringSplitter().transform(ast)
-    # if transformers["change_ints"].value:
-    #     ast = transf.IntObfuscator().transform(ast)
-    # if transformers["remap_members"].value:
-    #     ast = transf.MemberRenamer().transform(ast)
-    # if transformers["collect_method_calls"].value:
-    #     ast = transf.Collector(transformers["collect_consts"].value).transform(ast)
-    fix_missing_locations(ast)
-    return ast
-
-
-from util import NonEscapingUnparser
+    fix_missing_locations(c_ast)
+    return c_ast
 
 
 def go():
