@@ -27,8 +27,6 @@ transformers = ConfigSegment(
                                True),
     change_ints=ConfigValue("Obscures int constants", True),
     encode_strings=ConfigValue("Encodes strings in base64 followed by level 9 zlib compression", True),
-    simplify_strings=ConfigValue("Splits strings up into chars, then adds them back together at runtime. Useful with "
-                                 "collect_consts, at a cost of higher file size", True),
     remove_direct_attrib_set=ConfigValue("Removes direct attribute setting and replaces it with setattr()", True),
     wrap_in_code_obj=ConfigValue("Wraps the entire program in a dynamically created code object at runtime. It is "
                                  "recommended to do another pass after this, since it exposes string constants and "
@@ -41,9 +39,8 @@ transformers = ConfigSegment(
 all_config_segments = [general_settings, transformers]
 
 all_transformers = [
-    (transf.EncodeStrings, "encode_strings"),
-    (transf.StringSplitter, "simplify_strings"),
     (transf.IntObfuscator, "change_ints"),
+    (transf.EncodeStrings, "encode_strings"),
     (transf.MemberRenamer, "remap_members"),
     (transf.ReplaceAttribs, "remove_direct_attrib_set"),
     (transf.Collector, "collect_method_calls"),
@@ -120,7 +117,7 @@ def transform_source(c_ast: AST) -> AST:
 def go():
     input_file = general_settings["input_file"].value
     output_file = general_settings["output_file"].value
-    with open(input_file, "r") as f:
+    with open(input_file, "r", encoding="utf8") as f:
         inp_source = f.read()
     compiled_ast: AST = ast.parse(inp_source)
     compiled_ast = transform_source(compiled_ast)
