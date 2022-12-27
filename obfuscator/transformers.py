@@ -800,20 +800,23 @@ def create_import(name):
 class EncodeStrings(Transformer, NodeTransformer):
     def __init__(self, config):
         self.in_formatted_str = False
+        self.no_lzma = False
         super().__init__(config)
 
     def visit_JoinedStr(self, node: JoinedStr) -> Any:
         self.in_formatted_str = True
+        self.no_lzma = True
         r = self.generic_visit(node)
+        self.no_lzma = False
         self.in_formatted_str = False
         return r
 
-    # def visit_FormattedValue(self, node: FormattedValue) -> Any:
-    #     prev = self.in_formatted_str
-    #     self.in_formatted_str = False
-    #     r = self.generic_visit(node)
-    #     self.in_formatted_str = prev
-    #     return r
+    def visit_FormattedValue(self, node: FormattedValue) -> Any:
+        prev = self.in_formatted_str
+        self.in_formatted_str = False
+        r = self.generic_visit(node)
+        self.in_formatted_str = prev
+        return r
 
     def visit_Constant(self, node: Constant) -> Any:
         val = node.value
@@ -821,7 +824,7 @@ class EncodeStrings(Transformer, NodeTransformer):
         if isinstance(val, str):
             encoded = base64.b64encode(val.encode("utf8"))
             do_decode = True
-            if self.in_formatted_str:  # can't use unicode chars in fstrings since these would lead to escapes
+            if self.no_lzma:  # can't use unicode chars in fstrings since these would lead to escapes
                 compressed = encoded
             else:
                 compressed = zlib.compress(encoded, 9)
