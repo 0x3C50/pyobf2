@@ -830,7 +830,7 @@ class EncodeStrings(Transformer, NodeTransformer):
                 compressed = zlib.compress(encoded, 9)
         elif type(val) == bytes:
             encoded = base64.b64encode(val)
-            if self.in_formatted_str:
+            if self.no_lzma:
                 compressed = encoded
             else:
                 compressed = zlib.compress(encoded, 9)
@@ -855,7 +855,7 @@ class EncodeStrings(Transformer, NodeTransformer):
                             Constant(compressed)
                         ],
                         keywords=[]
-                    ) if not self.in_formatted_str else Constant(compressed)
+                    ) if not self.no_lzma else Constant(compressed)
                 ],
                 keywords=[]
             )
