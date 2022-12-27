@@ -96,6 +96,8 @@ __pypackages__/
 
 .idea
 
+test/*
+
 config.toml
 
 # Celery stuff
@@ -131,3 +133,4 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+/test/
