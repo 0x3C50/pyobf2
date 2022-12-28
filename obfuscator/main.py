@@ -120,5 +120,5 @@ def go():
             print("Full error: ", e)
             return
         raise
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf8") as f:
         f.write(src)
