@@ -68,7 +68,7 @@ class MappingGenerator(NodeVisitor):
                 self.put_name_if_absent(x, remapped_name)
                 node.names[i] = remapped_name
             else:
-                # this global statemenet defines a var at module level
+                # this global statement defines a var at module level
                 # this is straight up evil coding practise but some fucked up people do it so it has to be supported
                 remapped_name = self.mapping_name("var")
                 self.put_name_at_module_level(x, remapped_name)
