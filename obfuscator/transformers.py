@@ -581,7 +581,8 @@ class ConstructDynamicCodeObject(Transformer):
             type_ignores=[]
         ), "", "exec", optimize=2)
         key = hashlib.md5(
-            "".join(map(repr, [p.co_consts[0].co_code, *p.co_consts[0].co_consts, *p.co_consts[0].co_names, *p.co_consts[0].co_varnames])).encode(
+            "".join(map(repr, [p.co_consts[0].co_code, *p.co_consts[0].co_consts, *p.co_consts[0].co_names,
+                               *p.co_consts[0].co_varnames])).encode(
                 "utf8")).digest()
         aes = AES.new(key, AES.MODE_EAX)
         encrypted = aes.encrypt_and_digest(dumped)
@@ -877,6 +878,57 @@ class EncodeStrings(Transformer, NodeTransformer):
             return t
         else:
             return self.generic_visit(node)
+
+    def transform(self, ast: AST) -> AST:
+        return self.visit(ast)
+
+
+class FstringsToFormatSequence(Transformer, NodeTransformer):
+    conversion_method_dict = {
+        's': "str",
+        'r': "repr",
+        'a': "ascii"
+    }
+
+    def collect_fstring_consts(self, node: JoinedStr) -> str:
+        s = ""
+        for x in node.values:
+            if isinstance(x, Constant):
+                s += str(x.value)
+            else:
+                raise ValueError("Non-constant format specs are not supported")
+        return s
+
+    def visit_JoinedStr(self, node: JoinedStr) -> Any:
+        converted_format = ""
+        collected_args = []
+        for value in node.values:
+            if isinstance(value, FormattedValue):
+                converted_format += "{"
+                if value.format_spec is not None and isinstance(value.format_spec, JoinedStr):  # god i hate fstrings
+                    converted_format += ":"+self.collect_fstring_consts(value.format_spec)
+                converted_format += "}"
+                loader_mth = value.value
+                if value.conversion != -1 and chr(value.conversion) in self.conversion_method_dict:
+                    mth = self.conversion_method_dict[chr(value.conversion)]
+                    loader_mth = Call(
+                        func=Name(mth, Load()),
+                        args=[loader_mth],
+                        keywords=[]
+                    )
+                collected_args.append(loader_mth)
+            elif isinstance(value, Constant):
+                converted_format += str(value.value)
+        return Call(
+            func=Attribute(
+                value=Constant(converted_format),
+                attr="format",
+                ctx=Load()
+            ),
+            args=collected_args,
+            keywords=[]
+        )
+        # return self.generic_visit(node)
 
     def transform(self, ast: AST) -> AST:
         return self.visit(ast)

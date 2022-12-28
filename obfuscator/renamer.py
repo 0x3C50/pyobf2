@@ -10,7 +10,7 @@ def random_mapping_name() -> str:
     """
     global mapped_name_count
     mapped_name_count += 1
-    return "_" * mapped_name_count
+    return f"nagogy{mapped_name_count}"
 
 
 class MappingGenerator(NodeVisitor):
@@ -140,6 +140,7 @@ class MappingGenerator(NodeVisitor):
         self.end_visit()
 
     def visit_ClassDef(self, node: ClassDef) -> Any:
+        self.put_name_if_absent(node.name, random_mapping_name())
         self.start_visit("cl_" + node.name)
         self.generic_visit(node)
         self.end_visit()
@@ -236,6 +237,7 @@ class MappingApplicator(NodeVisitor):
 
     def visit_ClassDef(self, node: ClassDef) -> Any:
         self.start_visit("cl_" + node.name)
+        node.name = self.remap_name_if_needed(node.name)
         self.generic_visit(node)
         self.end_visit()
 

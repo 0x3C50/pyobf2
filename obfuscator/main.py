@@ -33,12 +33,14 @@ transformers = ConfigSegment(
                                  "similar", True),
     wrap_in_code_obj_and_encrypt=ConfigValue("In addition to wrapping the entire program in dynamically created code "
                                              "objects, also encrypts the bytecode. Only works if wrap_in_code_obj is "
-                                             "enabled", True)
+                                             "enabled", True),
+    convert_fstrings_to_format=ConfigValue("Converts F-Strings to their str.format equivalent. May help with certain transformers", True)
 )
 
 all_config_segments = [general_settings, transformers]
 
 all_transformers = [
+    (transf.FstringsToFormatSequence, "convert_fstrings_to_format"),
     (transf.IntObfuscator, "change_ints"),
     (transf.EncodeStrings, "encode_strings"),
     (transf.MemberRenamer, "remap_members"),
