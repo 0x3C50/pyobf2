@@ -11,23 +11,35 @@ from typing import Callable
 from Crypto.Cipher import AES
 
 from renamer import *
-from util import randomize_cache
+from util import ast_import_full
+from util import randomize_cache, ast_import_from
+
+from cfg import ConfigSegment, ConfigValue
 
 
-class Transformer:
-    def __init__(self, config):
-        self.config = config
+class Transformer(object):
+    def __init__(self, name: str, desc: str, **add_config: ConfigValue):
+        self.name = name
+        self.config = ConfigSegment(self.name, desc,
+                                    enabled=ConfigValue("Enables this transformer", False),
+                                    **add_config)
 
     def transform(self, ast: AST) -> AST:
         return ast
 
 
 class MemberRenamer(Transformer):
-    def __init__(self, config):
-        super().__init__(config)
+    def __init__(self):
+        super().__init__("renamer", "Renames all members (methods, classes, fields, args)",
+                         rename_format=ConfigValue("Format for the renamer. Will be queried using eval().\n"
+                                                   "'counter' is a variable incrementing with each name generated\n"
+                                                   "'kind' is either 'method', 'var', 'arg' or 'class', depending on the current element\n"
+                                                   "'get_counter(name)' is a method that increments a counter behind 'name', and returns its current "
+                                                   "value",
+                                                   "f'{kind}{get_counter(kind)}'"))
 
     def transform(self, ast: AST) -> AST:
-        generator = MappingGenerator(True, True, True)
+        generator = MappingGenerator(self.config["rename_format"].value)
         generator.visit(ast)
         MappingApplicator(generator.mappings).visit(ast)
         return ast
@@ -57,11 +69,12 @@ class Collector(Transformer, NodeTransformer):
             self.name = name
             super().__init__(f"{owner}.{name}")
 
-    def __init__(self, config):
+    def __init__(self):
         self.in_formatted_str = False
-        self.collect_consts = config["collect_consts"].value
+        # self.collect_consts = config["collect_consts"].value
         self.found = []
-        super().__init__(config)
+        super().__init__("collector", "Collects method calls and constants",
+                         collect_consts=ConfigValue("Collects constants", True))
 
     def visit_JoinedStr(self, node: JoinedStr) -> Any:
         self.in_formatted_str = True
@@ -77,7 +90,7 @@ class Collector(Transformer, NodeTransformer):
         return r
 
     def visit_Constant(self, node: Constant) -> Any:
-        if self.collect_consts:
+        if self.config["collect_consts"].value:
             val = node.value
             ref = self._const(val)
             if ref in self.found:
@@ -166,95 +179,10 @@ class Collector(Transformer, NodeTransformer):
         return new_ast
 
 
-class StringSplitter(Transformer, NodeTransformer):
-    def __init__(self, config):
-        super().__init__(config)
-        self.in_fstring = False
-
-    def visit_JoinedStr(self, node: JoinedStr) -> Any:
-        self.in_fstring = True
-        t = self.generic_visit(node)
-        self.in_fstring = False
-        return t
-
-    def visit_Constant(self, node: Constant) -> Any:
-        r = self.generic_visit(node)
-        if type(node.value) == str:
-            value: str = node.value
-            chars = list(value)
-            if len(chars) <= 1:  # 1 or 0
-                v = Constant(chars[0] if len(chars) == 1 else "")
-            else:
-                v = BinOp(
-                    left=Call(
-                        func=Name('chr', Load()),
-                        args=[
-                            Constant(ord(chars[0]))
-                        ],
-                        keywords=[]
-                    ),
-                    op=Add(),
-                    right=Call(
-                        func=Name('chr', Load()),
-                        args=[
-                            Constant(ord(chars[1]))
-                        ],
-                        keywords=[]
-                    )
-                )
-                if len(chars) > 2:
-                    for i in range(2, len(chars)):
-                        v = BinOp(
-                            left=v,
-                            op=Add(),
-                            right=Call(
-                                func=Name('chr', Load()),
-                                args=[
-                                    Constant(ord(chars[i]))
-                                ],
-                                keywords=[]
-                            )
-                        )
-            if self.in_fstring:
-                v = FormattedValue(
-                    value=v,
-                    conversion=-1
-                )
-            return v
-        elif type(node.value) == bytes:
-            value: bytes = node.value
-            ints = [x for x in value]
-            v = Call(  # bytes(*(ints,)) -> simplifyable to bytes(ints)
-                func=Name('bytes', Load()),
-                args=[
-                    Starred(
-                        Tuple(
-                            [
-                                List(
-                                    [Constant(x) for x in ints],
-                                    Load()
-                                )
-                            ],
-                            Load()
-                        ),
-                        Load()
-                    )
-                ],
-                keywords=[]
-            )
-            if self.in_fstring:
-                v = FormattedValue(  # f"{v}"
-                    v,
-                    -1
-                )
-            return v
-        return r
-
-    def transform(self, ast: AST) -> AST:
-        return self.visit(ast)
-
-
 class IntObfuscator(Transformer, NodeTransformer):
+    def __init__(self):
+        super().__init__("intObfuscator", "Obscures int constants")
+
     def visit_Constant(self, node: Constant) -> Any:
         s = self.generic_visit(node)
         if type(node.value) == int:
@@ -320,7 +248,7 @@ class IntObfuscator(Transformer, NodeTransformer):
                                         keywords=[])],
                                 keywords=[]),
                             Call(
-                                func=Name('range', Load()),  # rangeg(math.floor(len(encoded)/3))
+                                func=Name('range', Load()),  # range(math.floor(len(encoded)/3))
                                 args=[
                                     Constant(math.floor(len(encoded) / 3))
                                 ],
@@ -342,6 +270,8 @@ class IntObfuscator(Transformer, NodeTransformer):
 
 
 class ReplaceAttribs(Transformer, NodeTransformer):
+    def __init__(self):
+        super().__init__("replaceAttribSet", "Replaces direct attribute sets with setattr")
 
     def visit_Assign(self, node: Assign) -> Any:
         if len(node.targets) == 1:
@@ -391,10 +321,10 @@ class ConstructDynamicCodeObject(Transformer):
         "co_cellvars"
     ]
 
-    def __init__(self, config):
+    def __init__(self):
         self.code_obj_dict = dict()
-        self.do_encrypt = config["wrap_in_code_obj_and_encrypt"].value
-        super().__init__(config)
+        super().__init__("dynamicCodeObjLauncher", "Launches the program by constructing it from the ground up with dynamic code objects",
+                         encrypt=ConfigValue("Encrypts the bytecode with a dynamically generated AES key", True))
 
     def get_all_code_objects(self, args):
         # args = self.args_from_co(code)
@@ -589,20 +519,14 @@ class ConstructDynamicCodeObject(Transformer):
         nonce = aes.nonce
         loader = Module(
             body=[
-                ImportFrom(
-                    module="Crypto.Cipher",
-                    names=[
-                        alias(name="AES")
-                    ],
-                    level=0
-                ),
+                ast_import_from("Crypto.Cipher", "AES"),
                 Expr(
                     Call(
                         func=Name('exec', Load()),
                         args=[
                             Call(
                                 func=Attribute(
-                                    value=create_import("marshal"),
+                                    value=ast_import_full("marshal"),
                                     attr="loads",
                                     ctx=Load()
                                 ),
@@ -620,7 +544,7 @@ class ConstructDynamicCodeObject(Transformer):
                                                         func=Attribute(
                                                             value=Call(
                                                                 func=Attribute(
-                                                                    value=create_import("hashlib"),
+                                                                    value=ast_import_full("hashlib"),
                                                                     attr="md5",
                                                                     ctx=Load()
                                                                 ),
@@ -629,65 +553,65 @@ class ConstructDynamicCodeObject(Transformer):
                                                                         func=Attribute(
                                                                             value=Call(
                                                                                 func=Attribute(
-                                                                                    value=Constant(value=''),
+                                                                                    value=Constant(''),
                                                                                     attr='join',
                                                                                     ctx=Load()),
                                                                                 args=[
                                                                                     Call(
-                                                                                        func=Name(id='map', ctx=Load()),
+                                                                                        func=Name('map', Load()),
                                                                                         args=[
-                                                                                            Name(id='repr', ctx=Load()),
+                                                                                            Name('repr', Load()),
                                                                                             List(
                                                                                                 elts=[
                                                                                                     Attribute(
-                                                                                                        value=Attribute(
-                                                                                                            value=Name(
-                                                                                                                id='b',
-                                                                                                                ctx=Load()),
-                                                                                                            attr='__code__',
-                                                                                                            ctx=Load()),
-                                                                                                        attr='co_code',
-                                                                                                        ctx=Load()),
+                                                                                                        Attribute(
+                                                                                                            Name(
+                                                                                                                'b',
+                                                                                                                Load()),
+                                                                                                            '__code__',
+                                                                                                            Load()),
+                                                                                                        'co_code',
+                                                                                                        Load()),
                                                                                                     Starred(
-                                                                                                        value=Attribute(
-                                                                                                            value=Attribute(
-                                                                                                                value=Name(
-                                                                                                                    id='b',
-                                                                                                                    ctx=Load()),
-                                                                                                                attr='__code__',
-                                                                                                                ctx=Load()),
-                                                                                                            attr='co_consts',
-                                                                                                            ctx=Load()),
-                                                                                                        ctx=Load()),
+                                                                                                        Attribute(
+                                                                                                            Attribute(
+                                                                                                                Name(
+                                                                                                                    'b',
+                                                                                                                    Load()),
+                                                                                                                '__code__',
+                                                                                                                Load()),
+                                                                                                            'co_consts',
+                                                                                                            Load()),
+                                                                                                        Load()),
                                                                                                     Starred(
-                                                                                                        value=Attribute(
-                                                                                                            value=Attribute(
-                                                                                                                value=Name(
-                                                                                                                    id='b',
-                                                                                                                    ctx=Load()),
-                                                                                                                attr='__code__',
-                                                                                                                ctx=Load()),
-                                                                                                            attr='co_names',
-                                                                                                            ctx=Load()),
-                                                                                                        ctx=Load()),
+                                                                                                        Attribute(
+                                                                                                            Attribute(
+                                                                                                                Name(
+                                                                                                                    'b',
+                                                                                                                    Load()),
+                                                                                                                '__code__',
+                                                                                                                Load()),
+                                                                                                            'co_names',
+                                                                                                            Load()),
+                                                                                                        Load()),
                                                                                                     Starred(
-                                                                                                        value=Attribute(
-                                                                                                            value=Attribute(
-                                                                                                                value=Name(
-                                                                                                                    id='b',
-                                                                                                                    ctx=Load()),
-                                                                                                                attr='__code__',
-                                                                                                                ctx=Load()),
-                                                                                                            attr='co_varnames',
-                                                                                                            ctx=Load()),
-                                                                                                        ctx=Load())],
+                                                                                                        Attribute(
+                                                                                                            Attribute(
+                                                                                                                Name(
+                                                                                                                    'b',
+                                                                                                                    Load()),
+                                                                                                                '__code__',
+                                                                                                                Load()),
+                                                                                                            'co_varnames',
+                                                                                                            Load()),
+                                                                                                        Load())],
                                                                                                 ctx=Load())],
                                                                                         keywords=[])],
                                                                                 keywords=[]),
                                                                             attr='encode',
                                                                             ctx=Load()),
                                                                         args=[
-                                                                            Constant(value='utf8')],
+                                                                            Constant('utf8')],
                                                                         keywords=[])
                                                                 ],
                                                                 keywords=[]
@@ -747,7 +671,7 @@ class ConstructDynamicCodeObject(Transformer):
 
     def transform(self, ast_mod: AST) -> Module:
         ast_mod = fix_missing_locations(ast_mod)
-        if self.do_encrypt:
+        if self.config["encrypt"].value:
             return self.do_enc_pass(ast_mod)
         else:
             compiled_code_obj: CodeType = compile(ast_mod, bytes([0xDA, 0xAF, 0x1A, 0x87, 0xFF]), "exec", optimize=2)
@@ -790,19 +714,11 @@ class ConstructDynamicCodeObject(Transformer):
             )
 
 
-def create_import(name):
-    return Call(
-        func=Name('__import__', Load()),
-        args=[Constant(name)],
-        keywords=[]
-    )
-
-
 class EncodeStrings(Transformer, NodeTransformer):
-    def __init__(self, config):
+    def __init__(self):
         self.in_formatted_str = False
         self.no_lzma = False
-        super().__init__(config)
+        super().__init__("encodeStrings", "Encodes strings with base64 and (if not in a fstring) lzma")
 
     def visit_JoinedStr(self, node: JoinedStr) -> Any:
         self.in_formatted_str = True
@@ -840,7 +756,7 @@ class EncodeStrings(Transformer, NodeTransformer):
         if compressed is not None:
             t = Call(
                 func=Attribute(
-                    value=create_import("base64"),
+                    value=ast_import_full("base64"),
                     attr="b64decode",
                     ctx=Load()
                 ),
@@ -848,7 +764,7 @@ class EncodeStrings(Transformer, NodeTransformer):
                     # We haven't compressed if we're in an fstr
                     Call(
                         func=Attribute(
-                            value=create_import("zlib"),
+                            value=ast_import_full("zlib"),
                             attr="decompress",
                             ctx=Load()
                         ),
@@ -883,6 +799,16 @@ class EncodeStrings(Transformer, NodeTransformer):
         return self.visit(ast)
 
 
+def collect_fstring_consts(node: JoinedStr) -> str:
+    s = ""
+    for x in node.values:
+        if isinstance(x, Constant):
+            s += str(x.value)
+        else:
+            raise ValueError("Non-constant format specs are not supported")
+    return s
+
+
 class FstringsToFormatSequence(Transformer, NodeTransformer):
     conversion_method_dict = {
         's': "str",
@@ -890,14 +816,8 @@ class FstringsToFormatSequence(Transformer, NodeTransformer):
         'a': "ascii"
     }
 
-    def collect_fstring_consts(self, node: JoinedStr) -> str:
-        s = ""
-        for x in node.values:
-            if isinstance(x, Constant):
-                s += str(x.value)
-            else:
-                raise ValueError("Non-constant format specs are not supported")
-        return s
+    def __init__(self):
+        super().__init__("fstrToFormatSeq", "Converts F-Strings to their str.format equivalent")
 
     def visit_JoinedStr(self, node: JoinedStr) -> Any:
         converted_format = ""
@@ -906,7 +826,7 @@ class FstringsToFormatSequence(Transformer, NodeTransformer):
             if isinstance(value, FormattedValue):
                 converted_format += "{"
                 if value.format_spec is not None and isinstance(value.format_spec, JoinedStr):  # god i hate fstrings
-                    converted_format += ":"+self.collect_fstring_consts(value.format_spec)
+                    converted_format += ":" + collect_fstring_consts(value.format_spec)
                 converted_format += "}"
                 loader_mth = value.value
                 if value.conversion != -1 and chr(value.conversion) in self.conversion_method_dict:

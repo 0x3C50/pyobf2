@@ -1,6 +1,7 @@
 import ast
 import opcode
 import random
+from ast import *
 
 _SINGLE_QUOTES = ("'", '"')
 _MULTI_QUOTES = ('"""', "'''")
@@ -89,3 +90,19 @@ def randomize_cache(bc: list[int]):
         for off in range(cache_bytes):
             bc[reader + off] = random.randint(0, 255)
         reader += cache_bytes
+
+
+def ast_import_full(name: str) -> Call:
+    return Call(
+        func=Name('__import__', Load()),
+        args=[Constant(name)],
+        keywords=[]
+    )
+
+
+def ast_import_from(name: str, *names) -> ImportFrom:
+    return ImportFrom(
+        module=name,
+        names=[alias(name=x) for x in names],
+        level=0
+    )

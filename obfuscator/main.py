@@ -17,45 +17,32 @@ general_settings = ConfigSegment(
     output_file=ConfigValue("The output for the obfuscator", "output.py")
 )
 
-transformers = ConfigSegment(
-    "transformers",
-    "Transformer options",
-    collect_method_calls=ConfigValue("Collects all method calls into a list and references them via eval()", True),
-    remap_members=ConfigValue("Remaps all members (methods*, arguments, variables). Mostly stable, but can get funny "
-                              "at times. * Methods in classes are not remapped due to inheritance issues", True),
-    collect_consts=ConfigValue("Collects all constant values into an array and replaces them with access to the array",
-                               True),
-    change_ints=ConfigValue("Obscures int constants", True),
-    encode_strings=ConfigValue("Encodes strings in base64 followed by level 9 zlib compression", True),
-    remove_direct_attrib_set=ConfigValue("Removes direct attribute setting and replaces it with setattr()", True),
-    wrap_in_code_obj=ConfigValue("Wraps the entire program in a dynamically created code object at runtime. It is "
-                                 "recommended to do another pass after this, since it exposes string constants and "
-                                 "similar", True),
-    wrap_in_code_obj_and_encrypt=ConfigValue("In addition to wrapping the entire program in dynamically created code "
-                                             "objects, also encrypts the bytecode. Only works if wrap_in_code_obj is "
-                                             "enabled", True),
-    convert_fstrings_to_format=ConfigValue("Converts F-Strings to their str.format equivalent. May help with certain transformers", True)
-)
+all_config_segments = [general_settings]
 
-all_config_segments = [general_settings, transformers]
+all_transformers = [x() for x in [transf.FstringsToFormatSequence, transf.IntObfuscator, transf.EncodeStrings, transf.MemberRenamer,
+                                  transf.ReplaceAttribs, transf.Collector, transf.ConstructDynamicCodeObject]]
 
-all_transformers = [
-    (transf.FstringsToFormatSequence, "convert_fstrings_to_format"),
-    (transf.IntObfuscator, "change_ints"),
-    (transf.EncodeStrings, "encode_strings"),
-    (transf.MemberRenamer, "remap_members"),
-    (transf.ReplaceAttribs, "remove_direct_attrib_set"),
-    (transf.Collector, "collect_method_calls"),
-    (transf.ConstructDynamicCodeObject, "wrap_in_code_obj")
-]
+for x in all_transformers:
+    all_config_segments.append(x.config)
+
+# all_transformers = [
+#     (transf.FstringsToFormatSequence, "convert_fstrings_to_format"),
+#     (transf.IntObfuscator, "change_ints"),
+#     (transf.EncodeStrings, "encode_strings"),
+#     (transf.MemberRenamer, "remap_members"),
+#     (transf.ReplaceAttribs, "remove_direct_attrib_set"),
+#     (transf.Collector, "collect_method_calls"),
+#     (transf.ConstructDynamicCodeObject, "wrap_in_code_obj")
+# ]
 
 
 def populate_with(doc: TOMLDocument, seg: ConfigSegment):
     tbl = table()
-    tbl.add(comment(seg.desc))
+    doc.add(comment(seg.desc))
     for k in seg.keys():
         v: ConfigValue = seg[k]
-        tbl.add(comment(v.desc))
+        for x in [comment(y.strip()) for y in v.desc.split("\n")]:
+            tbl.add(x)
         tbl.add(k, v.value)
     doc.add(seg.name, tbl)
 
@@ -67,8 +54,8 @@ def generate_example_config() -> TOMLDocument:
     doc.add(nl())
 
     # Values
-    populate_with(doc, general_settings)
-    populate_with(doc, transformers)
+    for x in all_config_segments:
+        populate_with(doc, x)
     return doc
 
 
@@ -109,9 +96,9 @@ def recursive_attrib_resolve(inp: Attribute):
 
 def transform_source(c_ast: AST) -> AST:
     for t in all_transformers:
-        if transformers[t[1]].value:
-            c_ast = t[0](transformers).transform(c_ast)
-            print(f"Executed transformer {t[0].__name__}")
+        if t.config["enabled"].value:
+            c_ast = t.transform(c_ast)
+            print(f"Executed transformer {t.name}")
     fix_missing_locations(c_ast)
     return c_ast
 

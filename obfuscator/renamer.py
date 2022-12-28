@@ -1,16 +1,6 @@
+import ast
 from ast import *
 from typing import Any
-
-mapped_name_count = 0
-
-
-def random_mapping_name() -> str:
-    """
-    Generates a random mapping name
-    """
-    global mapped_name_count
-    mapped_name_count += 1
-    return f"nagogy{mapped_name_count}"
 
 
 class MappingGenerator(NodeVisitor):
@@ -46,18 +36,27 @@ class MappingGenerator(NodeVisitor):
                 return self.mappings[x]
         return old
 
-    def __init__(self, methods, variables, args):
-        """
-        Initializes a new mapping generator
-        :param methods:  Remap methods
-        :param variables: Remap vars
-        :param args:  Remap method args
-        """
-        self.config = {
-            "methods": methods,
-            "vars": variables,
-            "args": args
-        }
+    def counter_shit(self, name: str):
+        if name not in self.counters:
+            self.counters[name] = 0
+            return 0
+        self.counters[name] += 1
+        return self.counters[name]
+
+    def mapping_name(self, for_type: str):
+        fmt = self.fmt
+        generated_name = eval(fmt, {
+            "counter": self.counter_shit("cnt"),
+            "kind": for_type,
+            "get_counter": self.counter_shit
+        })
+        if type(generated_name) != str:
+            generated_name = str(generated_name)
+        return generated_name
+
+    def __init__(self, fmt):
+        self.fmt = fmt
+        self.counters = {}
         self.mappings = {}
         self.location_stack = []
 
@@ -65,9 +64,17 @@ class MappingGenerator(NodeVisitor):
         for i in range(len(node.names)):
             x = node.names[i]
             remapped_name = self.remap_name_if_needed(x)
-            if remapped_name is not x:  # we have a mapping for this one? holy shit
+            if remapped_name is not x:  # we have a mapping for this one? good
                 self.put_name_if_absent(x, remapped_name)
                 node.names[i] = remapped_name
+            else:
+                # this global statemenet defines a var at module level
+                # this is straight up evil coding practise but some fucked up people do it so it has to be supported
+                remapped_name = self.mapping_name("var")
+                self.put_name_at_module_level(x, remapped_name)
+                self.put_name_if_absent(x, remapped_name)
+                node.names[i] = remapped_name
+
         self.generic_visit(node)
 
     def visit_Import(self, node: Import) -> Any:
@@ -76,12 +83,12 @@ class MappingGenerator(NodeVisitor):
                 continue
             if x.asname is None:
                 x.asname = x.name
-            self.put_name_if_absent(x.asname, random_mapping_name())
+            self.put_name_if_absent(x.asname, self.mapping_name("var"))
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ImportFrom) -> Any:
         for x in node.names:
-            self.put_name_if_absent(x.asname, random_mapping_name())
+            self.put_name_if_absent(x.asname, self.mapping_name("var"))
         self.generic_visit(node)
 
     def print_mappings(self):
@@ -91,6 +98,11 @@ class MappingGenerator(NodeVisitor):
         """
         for x in self.mappings.keys():
             print(f"{x} to {self.mappings[x]}")
+
+    def put_name_at_module_level(self, old, new):
+        full = f"var..{old}"
+        if full not in self.mappings:
+            self.mappings[full] = new
 
     def put_name_if_absent(self, old, new):
         """
@@ -113,24 +125,23 @@ class MappingGenerator(NodeVisitor):
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
         name = node.name
         # methods need to be enabled and none of the location elements need to be of a class
-        if self.config["methods"] and not any(x.startswith("cl_") for x in self.location_stack):
-            self.put_name_if_absent(name, random_mapping_name())
+        if not any(x.startswith("cl_") for x in self.location_stack):
+            self.put_name_if_absent(name, self.mapping_name("method"))
         self.start_visit("mt_" + name)
         self.generic_visit(node)
         self.end_visit()
 
     def visit_AsyncFunctionDef(self, node: AsyncFunctionDef) -> Any:
         name = node.name
-        if self.config["methods"]:
-            self.put_name_if_absent(name, random_mapping_name())
+        self.put_name_if_absent(name, self.mapping_name("method"))
         self.start_visit("mt_" + name)
         self.generic_visit(node)
         self.end_visit()
 
     def visit_arg(self, node: arg) -> Any:
         name = node.arg
-        if name != "self" and self.config["args"]:  # maybe dont remap this one
-            nn = random_mapping_name()
+        if name != "self":  # maybe dont remap this one
+            nn = self.mapping_name("arg")
             self.put_name_if_absent(name, nn)
         # self.generic_visit(node)
 
@@ -140,7 +151,7 @@ class MappingGenerator(NodeVisitor):
         self.end_visit()
 
     def visit_ClassDef(self, node: ClassDef) -> Any:
-        self.put_name_if_absent(node.name, random_mapping_name())
+        self.put_name_if_absent(node.name, self.mapping_name("class"))
         self.start_visit("cl_" + node.name)
         self.generic_visit(node)
         self.end_visit()
@@ -152,8 +163,8 @@ class MappingGenerator(NodeVisitor):
 
     def visit_Name(self, node: Name) -> Any:
         if isinstance(node.ctx, Store):
-            if node.id != "self" and self.config["vars"]:
-                self.put_name_if_absent(node.id, random_mapping_name())
+            if node.id != "self":
+                self.put_name_if_absent(node.id, self.mapping_name("var"))
         self.generic_visit(node)
 
 
