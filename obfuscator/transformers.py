@@ -10,11 +10,10 @@ from typing import Callable
 
 from Crypto.Cipher import AES
 
+from cfg import ConfigSegment, ConfigValue
 from renamer import *
 from util import ast_import_full
 from util import randomize_cache, ast_import_from
-
-from cfg import ConfigSegment, ConfigValue
 
 
 class Transformer(object):
@@ -323,7 +322,8 @@ class ConstructDynamicCodeObject(Transformer):
 
     def __init__(self):
         self.code_obj_dict = dict()
-        super().__init__("dynamicCodeObjLauncher", "Launches the program by constructing it from the ground up with dynamic code objects",
+        super().__init__("dynamicCodeObjLauncher",
+                         "Launches the program by constructing it from the ground up with dynamic code objects",
                          encrypt=ConfigValue("Encrypts the bytecode with a dynamically generated AES key", True))
 
     def get_all_code_objects(self, args):
