@@ -3,11 +3,13 @@ import hashlib
 import marshal
 import math
 import random
+import sys
 import zlib
-from _ast import Module, Call
-from types import CodeType
+from _ast import Module, Call, AST
+from types import CodeType, NoneType
 from typing import Callable
 
+import rich
 from Crypto.Cipher import AES
 
 from cfg import ConfigSegment, ConfigValue
@@ -22,6 +24,7 @@ class Transformer(object):
         self.config = ConfigSegment(self.name, desc,
                                     enabled=ConfigValue("Enables this transformer", False),
                                     **add_config)
+        self.console: rich.Console = None
 
     def transform(self, ast: AST) -> AST:
         return ast
@@ -323,7 +326,7 @@ class ConstructDynamicCodeObject(Transformer):
     def __init__(self):
         self.code_obj_dict = dict()
         super().__init__("dynamicCodeObjLauncher",
-                         "Launches the program by constructing it from the ground up with dynamic code objects",
+                         "Launches the program by constructing it from the ground up with dynamic code objects. This REQUIRES PYTHON 3.11",
                          encrypt=ConfigValue("Encrypts the bytecode with a dynamically generated AES key", True))
 
     def get_all_code_objects(self, args):
@@ -669,7 +672,10 @@ class ConstructDynamicCodeObject(Transformer):
             ]
         )
 
-    def transform(self, ast_mod: AST) -> Module:
+    def transform(self, ast_mod: AST) -> AST | Module:
+        if sys.version_info[0] < 3 or sys.version_info[1] < 11:
+            self.console.log("Python [bold]3.11[/bold] or up is required to use dynamicCodeObjLauncher, skipping", style="red")
+            return ast_mod
         ast_mod = fix_missing_locations(ast_mod)
         if self.config["encrypt"].value:
             return self.do_enc_pass(ast_mod)

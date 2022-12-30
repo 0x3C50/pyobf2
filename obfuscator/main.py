@@ -45,6 +45,7 @@ all_transformers = [
 ]
 
 for x in all_transformers:
+    x.console = console
     all_config_segments.append(x.config)
 
 
@@ -180,7 +181,7 @@ def go_transitive():
         exit(1)
     console.log("Parsing inheritance tree...", style="#4f4f4f")
     deptree = get_dependency_tree(input_file)
-    common_prefix_l = len(os.path.commonprefix(list(deptree.keys())))
+    common_prefix_l = len(os.path.commonprefix(list(map(lambda x: os.path.dirname(x)+"/", deptree.keys()))))
     tree = rich.tree.Tree(
         os.path.abspath(input_file)[common_prefix_l:],
         style="green"
@@ -194,7 +195,7 @@ def go_transitive():
         for y in deptree[x]:
             if y not in all_files:
                 all_files.append(y)
-    common_prefix_l = len(os.path.commonprefix(all_files))
+    common_prefix_l = len(os.path.commonprefix(list(map(lambda x: os.path.dirname(x)+"/", all_files))))
     progress = rich.progress.Progress(
         rich.progress.TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
         rich.progress.BarColumn(bar_width=None),

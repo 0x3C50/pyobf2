@@ -116,6 +116,9 @@ def get_file_from_import(from_file: str, name: str):
         name = name[2:]
     elif name.startswith("."):
         name = name[1:]
+    if "." in name:
+        paths = name.split(".")
+        name = os.path.join(*paths)
     abspath_name = os.path.join(os.path.dirname(from_file), name) if len(name) > 0 else os.path.dirname(from_file)
     if os.path.exists(abspath_name):
         if os.path.isdir(abspath_name):  # is it a package? get __init__.py
