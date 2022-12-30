@@ -1,4 +1,4 @@
-import libchecker
+from libchecker import install_all_from_requirements_txt
 
 tried_relaunch = False
 
@@ -13,7 +13,7 @@ def launch():
             print("Modules are still missing after reinstall, giving up")
             exit(1)
         print("Found missing dependencies, installing...")
-        libchecker.install_all_from_requirements_txt()
+        install_all_from_requirements_txt()
         print("All dependencies installed, retrying launch")
         tried_relaunch = True
         launch()
