@@ -1,5 +1,6 @@
+import ast
 from ast import *
-from typing import Any
+from typing import Any, List
 
 
 class MappingGenerator(NodeVisitor):
@@ -85,11 +86,6 @@ class MappingGenerator(NodeVisitor):
             self.put_name_if_absent(x.asname, self.mapping_name("var"))
         self.generic_visit(node)
 
-    def visit_ImportFrom(self, node: ImportFrom) -> Any:
-        for x in node.names:
-            self.put_name_if_absent(x.asname, self.mapping_name("var"))
-        self.generic_visit(node)
-
     def print_mappings(self):
         """
         Prints all mappings
@@ -99,7 +95,7 @@ class MappingGenerator(NodeVisitor):
             print(f"{x} to {self.mappings[x]}")
 
     def put_name_at_module_level(self, old, new):
-        full = f"var..{old}"
+        full = f".{old}"
         if full not in self.mappings:
             self.mappings[full] = new
 
@@ -110,8 +106,10 @@ class MappingGenerator(NodeVisitor):
         :param new:  The new name
         :return: Nothing
         """
+        if old is None:
+            raise ValueError("none")
         loc = "|".join(self.location_stack)
-        full = f"var.{loc}.{old}"
+        full = f"{loc}.{old}"
         if full not in self.mappings:
             self.mappings[full] = new
 
@@ -150,20 +148,27 @@ class MappingGenerator(NodeVisitor):
         self.end_visit()
 
     def visit_ClassDef(self, node: ClassDef) -> Any:
-        self.put_name_if_absent(node.name, self.mapping_name("class"))
+        if not any(x.startswith("cl_") for x in self.location_stack):
+            self.put_name_if_absent(node.name, self.mapping_name("class"))
         self.start_visit("cl_" + node.name)
         self.generic_visit(node)
         self.end_visit()
 
-    def visit_Expr(self, node: Expr) -> Any:
-        self.start_visit("sp_expr")
+    def visit_ListComp(self, node: ListComp) -> Any:
+        self.start_visit("sp_lc")
         self.generic_visit(node)
         self.end_visit()
+
+    # def visit_Expr(self, node: Expr) -> Any:
+    #     self.start_visit("sp_expr")
+    #     self.generic_visit(node)
+    #     self.end_visit()
 
     def visit_Name(self, node: Name) -> Any:
         if isinstance(node.ctx, Store):
             if node.id != "self":
-                self.put_name_if_absent(node.id, self.mapping_name("var"))
+                if len(self.location_stack) == 0 or not self.location_stack[len(self.location_stack)-1].startswith("cl_"):
+                    self.put_name_if_absent(node.id, self.mapping_name("var"))
         self.generic_visit(node)
 
 
@@ -171,6 +176,133 @@ def grade_name_order(name: str):
     if len(name) == 0:
         return 0
     return len(name.split("|")) + 1
+
+
+class OtherFileMappingApplicator(NodeVisitor):
+    def __init__(self, mappings: dict[str, str], owning_module, all_els_in_other_file: list[str]):
+        self.mappings = mappings
+        self.all_els = all_els_in_other_file
+        self.owning_module = owning_module
+        self.names_containing_module = []
+
+    def _resolve_attr(self, node: Attribute) -> str | None:
+        first_part = self._resolve_attr(node.value) if isinstance(node.value, Attribute) else (
+            node.value.id if isinstance(node.value, Name) else None)
+        second_part = node.attr
+        if first_part is None:
+            return None
+        return first_part + "." + second_part
+
+    def _get_attr_parts(self, node: Attribute) -> list[str] | None:
+        parts = []
+        s = node.value
+        if isinstance(s, Attribute):
+            s = self._get_attr_parts(s)
+            if s is None:
+                return None
+            parts.extend(s)
+            parts.append(node.attr)
+        elif isinstance(s, Name):
+            parts.append(s.id)
+            parts.append(node.attr)
+        else:
+            return None
+        return parts
+
+    def _map_name(self, m: str) -> str:
+        return self.mappings[m] if m in self.mappings else m
+
+    def visit_ImportFrom(self, node: ImportFrom) -> Any:
+        if self._import_matches(node.module):
+            if len(node.names) == 1 and node.names[0].name == "*":  # why the fuck
+                node.names = [
+                    alias(name=self._map_name(x), asname=x) for x in self.all_els
+                ]
+            for x in node.names:
+                if x.asname is None:
+                    x.asname = x.name
+                x.name = self._map_name(x.name)
+
+    def _import_matches(self, import_name: str) -> bool:
+        if import_name.startswith(".") and not import_name.startswith(".."):
+            import_name = import_name[1:]
+        return import_name == self.owning_module
+
+    def visit_Import(self, node: Import) -> Any:
+        for x in node.names:
+            if self._import_matches(x.name):
+                target_name = x.asname if x.asname is not None else x.name
+                if target_name not in self.names_containing_module:
+                    self.names_containing_module.append(target_name)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: Attribute) -> Any:
+        attr_parts = self._get_attr_parts(node)
+        # print(attr_parts)
+        if attr_parts is None:
+            # self.generic_visit(node)
+            return
+        matched_name = []
+        for n in self.names_containing_module:
+            attr_res = n.split(".")
+            matches_verdict = True
+            if len(attr_res) < len(attr_parts):
+                for i in range(len(attr_res)):
+                    if attr_res[i] != attr_parts[i]:
+                        matches_verdict = False
+            if matches_verdict:
+                matched_name = attr_res
+                attr_parts = attr_parts[len(attr_res):]
+                break
+
+        if len(matched_name) > 0 and len(attr_parts) > 0:
+            remapped_names = [*matched_name, self._map_name(attr_parts[0])]
+            remapped_names.extend(attr_parts[1:])
+            built_attribute = Attribute(
+                value=Name(remapped_names[0], Load()),
+                attr=remapped_names[1],
+                ctx=Load()
+            )
+            if len(remapped_names) > 2:
+                for x in remapped_names[2:]:
+                    built_attribute = Attribute(
+                        value=built_attribute,
+                        attr=x,
+                        ctx=Load()
+                    )
+            node.value = built_attribute.value
+            node.attr = built_attribute.attr
+        # self.generic_visit(node)
+
+    def visit_Assign(self, node: Assign) -> Any:
+        """
+        jesus fucking christ
+        """
+        if isinstance(node.value, Call) and isinstance(node.value.func, Name) and node.value.func.id == "__import__" and len(node.value.args) > 0 \
+                and isinstance(node.value.args[0], Constant) and node.value.args[0].value == self.owning_module:  # aka __import__("our module name")
+            for x in node.targets:
+                name = self._resolve_attr(x) if isinstance(x, Attribute) else (x.id if isinstance(x, Name) else None)
+                if name is None:
+                    continue
+                if name not in self.names_containing_module:
+                    self.names_containing_module.append(name)
+        elif (isinstance(node.value, Attribute) or isinstance(node.value, Name)) and \
+            (self._resolve_attr(node.value) if isinstance(node.value, Attribute) else (node.value.id if isinstance(node.value, Name) else None)) \
+                in self.names_containing_module:  # aka something = something_that_we_know_is_our_module
+            for x in node.targets:
+                name2 = self._resolve_attr(x) if isinstance(x, Attribute) else (x.id if isinstance(x, Name) else None)
+                if name2 is None:
+                    continue
+                if name2 not in self.names_containing_module:
+                    self.names_containing_module.append(name2)
+        else:
+            for x in node.targets:  # we know these are being assigned something else, so remove them from the names we know are the module
+                name2 = self._resolve_attr(x) if isinstance(x, Attribute) else (x.id if isinstance(x, Name) else None)
+                if name2 is None:
+                    continue
+                if name2 in self.names_containing_module:
+                    self.names_containing_module.remove(name2)
+        self.generic_visit(node)
 
 
 class MappingApplicator(NodeVisitor):
@@ -191,9 +323,9 @@ class MappingApplicator(NodeVisitor):
     def remap_name_if_needed(self, old):
         sorted_names = list(self.mappings.keys())
         # Sort by longest (most specific) path first
-        sorted_names.sort(key=lambda v: grade_name_order(v.split(".")[1]), reverse=True)
+        sorted_names.sort(key=lambda v: grade_name_order(v.split(".")[0]), reverse=True)
         for x in sorted_names:
-            s_loc = x.split(".")[1]
+            s_loc = x.split(".")[0]
             location_split = s_loc.split("|")
             if len(location_split) == 1 and location_split[0] == '':
                 location_split = []
@@ -207,7 +339,7 @@ class MappingApplicator(NodeVisitor):
                         break
             else:
                 loc_matches = False
-            if loc_matches and x.split(".")[2] == old:
+            if loc_matches and x.split(".")[1] == old:
                 return self.mappings[x]
         return old
 
@@ -235,8 +367,8 @@ class MappingApplicator(NodeVisitor):
         node.arg = self.remap_name_if_needed(node.arg)
         self.generic_visit(node)
 
-    def visit_Expr(self, node: Expr) -> Any:
-        self.start_visit("sp_expr")
+    def visit_ListComp(self, node: ListComp) -> Any:
+        self.start_visit("sp_lc")
         self.generic_visit(node)
         self.end_visit()
 

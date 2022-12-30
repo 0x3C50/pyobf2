@@ -2,18 +2,21 @@ import base64
 import hashlib
 import marshal
 import math
+import os.path
 import random
 import sys
 import zlib
-from _ast import Module, Call, AST
-from types import CodeType, NoneType
-from typing import Callable
+from _ast import Module, Call
+from types import CodeType
+from typing import Callable, Any
 
 import rich
 from Crypto.Cipher import AES
 
 from cfg import ConfigSegment, ConfigValue
-from renamer import *
+from ast import *
+
+from renamer import MappingGenerator, MappingApplicator, OtherFileMappingApplicator
 from util import ast_import_full
 from util import randomize_cache, ast_import_from
 
@@ -26,8 +29,33 @@ class Transformer(object):
                                     **add_config)
         self.console: rich.Console = None
 
-    def transform(self, ast: AST) -> AST:
+    def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
         return ast
+
+
+def compute_import_path(from_path: str, to_path: str):
+    common_prefix = len(os.path.commonpath(
+        [
+            os.path.dirname(from_path),
+            os.path.dirname(to_path)
+        ]
+    ))
+    from_path = from_path[common_prefix+1:].split(os.path.sep)
+    to_path = to_path[common_prefix+1:].split(os.path.sep)
+
+    full_imp = ""
+    while len(from_path) > 1:
+        full_imp += ".."
+        from_path.pop(0)
+    if to_path[len(to_path)-1] == "__init__.py":
+        to_path.pop()
+
+    for x in to_path:
+        full_imp += x + "."
+    full_imp = full_imp[:-1]
+    if full_imp.endswith(".py"):
+        full_imp = full_imp[:-3]
+    return full_imp
 
 
 class MemberRenamer(Transformer):
@@ -40,10 +68,26 @@ class MemberRenamer(Transformer):
                                                    "value",
                                                    "f'{kind}{get_counter(kind)}'"))
 
-    def transform(self, ast: AST) -> AST:
+    def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
         generator = MappingGenerator(self.config["rename_format"].value)
         generator.visit(ast)
         MappingApplicator(generator.mappings).visit(ast)
+        if all_asts is not None:
+            mappings1 = {}
+            this_file_name = os.path.abspath(current_file_name)
+            for x in generator.mappings.keys():
+                n = x.split(".")
+                if n[0] == "":
+                    # self.console.log(current_file_name, n)
+                    mappings1[n[1]] = generator.mappings[x]
+            for i in range(len(all_asts)):
+                that_ast = all_asts[i]
+                if that_ast == ast:
+                    continue
+                that_file_name = os.path.abspath(all_file_names[i])
+                required_import = compute_import_path(that_file_name, this_file_name)
+                # self.console.log(required_import)
+                OtherFileMappingApplicator(mappings1, required_import, list(mappings1.keys())).visit(that_ast)
         return ast
 
 
@@ -160,7 +204,7 @@ class Collector(Transformer, NodeTransformer):
                 node.args.insert(0, attrib_owner)
         return r
 
-    def transform(self, ast: AST) -> AST:
+    def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
         self.found = []
         ast = self.visit(ast)
         new_ast: Module = Module(
@@ -267,7 +311,7 @@ class IntObfuscator(Transformer, NodeTransformer):
                 ])
         return s
 
-    def transform(self, ast: AST) -> AST:
+    def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
         return self.visit(ast)
 
 
@@ -293,7 +337,7 @@ class ReplaceAttribs(Transformer, NodeTransformer):
                 ))
         return self.generic_visit(node)
 
-    def transform(self, ast: AST) -> AST:
+    def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
         return self.visit(ast)
 
 
@@ -672,11 +716,11 @@ class ConstructDynamicCodeObject(Transformer):
             ]
         )
 
-    def transform(self, ast_mod: AST) -> AST | Module:
+    def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST | Module:
         if sys.version_info[0] < 3 or sys.version_info[1] < 11:
             self.console.log("Python [bold]3.11[/bold] or up is required to use dynamicCodeObjLauncher, skipping", style="red")
-            return ast_mod
-        ast_mod = fix_missing_locations(ast_mod)
+            return ast
+        ast_mod = fix_missing_locations(ast)
         if self.config["encrypt"].value:
             return self.do_enc_pass(ast_mod)
         else:
@@ -801,7 +845,7 @@ class EncodeStrings(Transformer, NodeTransformer):
         else:
             return self.generic_visit(node)
 
-    def transform(self, ast: AST) -> AST:
+    def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
         return self.visit(ast)
 
 
@@ -856,5 +900,5 @@ class FstringsToFormatSequence(Transformer, NodeTransformer):
         )
         # return self.generic_visit(node)
 
-    def transform(self, ast: AST) -> AST:
+    def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
         return self.visit(ast)

@@ -109,58 +109,57 @@ def main():
         go_single()
 
 
-def transform_source(c_ast: AST, log_indent: int = 0) -> AST:
+def transform_source(c_ast: AST, source_file_name: str) -> AST:
     transformers_to_run = list(
         filter(lambda x: x.config["enabled"].value, all_transformers)
     )
     if len(transformers_to_run) == 0:
-        console.log(" " * log_indent + "Nothing to do, bailing out", style="red")
+        console.log("Nothing to do, bailing out", style="red")
         exit(0)
     for t in track(transformers_to_run, description="Obfuscating...", console=console):
-        c_ast = t.transform(c_ast)
-        console.log(" " * log_indent + f"Executed transformer {t.name}", style="green")
+        c_ast = t.transform(c_ast, source_file_name, None, None)  # just this one
+        console.log(f"Executed transformer {t.name}", style="green")
     fix_missing_locations(c_ast)
     return c_ast
 
 
-def do_obf(task: rich.progress.TaskID, progress: rich.progress.Progress, input_file, output_file_path):
-    transformers_to_run = list(
-        filter(lambda x: x.config["enabled"].value, all_transformers)
-    )
-    completed = -1
-    progress.update(task, total=2 + len(transformers_to_run) + 2)  # load, parse, transform+1, unparse
-    progress.start_task(task)
-    progress.update(task, completed=(completed := completed + 1), description="Loading source")
-    with open(input_file, "r", encoding="utf8") as f:
-        inp_source = f.read()
-    progress.update(task, completed=(completed := completed + 1), description="Parsing source")
-    compiled_ast: AST = ast.parse(inp_source)
-    progress.update(task, completed=(completed := completed + 1), description="Running transformers")
-    if len(transformers_to_run) == 0:
-        console.log("Nothing to do, bailing out", style="red")
-        exit(0)
-    p = 1
-    for t in transformers_to_run:
-        progress.update(task, completed=(completed := completed + 1), description="Transformer " + t.name)
-        compiled_ast = t.transform(compiled_ast)
-        p += 1
-    fix_missing_locations(compiled_ast)
-    progress.update(task, completed=(completed := completed + 1), description="Writing")
+def do_obf(task: rich.progress.TaskID, progress: rich.progress.Progress, current_file_path, preparsed: AST, other_asts,
+           other_file_paths):
     try:
-        src = NonEscapingUnparser().visit(compiled_ast)
-    except Exception as e:
-        console.print_exception(max_frames=3)
-        if str(e) == "Unable to avoid backslash in f-string expression part":
-            console.log(
-                "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not able to escape ASCII characters in an "
-                "F-String expression. Please check if you have any ASCII characters in F-Strings, and escape them manually. "
-            )
-        exit(1)
-        return
+        transformers_to_run = list(
+            filter(lambda x: x.config["enabled"].value, all_transformers)
+        )
+        completed = -1
+        progress.update(task, total=len(transformers_to_run) + 1)  # transform+1
+        progress.start_task(task)
+        compiled_ast: AST = preparsed
+        progress.update(task, completed=(completed := completed + 1), description="Running transformers")
+        if len(transformers_to_run) == 0:
+            console.log("Nothing to do, bailing out", style="red")
+            exit(0)
+        for t in transformers_to_run:
+            progress.update(task, completed=(completed := completed + 1), description="Transformer " + t.name)
+            compiled_ast = t.transform(compiled_ast, current_file_path, other_asts, other_file_paths)
+        fix_missing_locations(compiled_ast)
+        # progress.update(task, completed=(completed := completed + 1), description="Writing")
+        # try:
+        #     src = NonEscapingUnparser().visit(compiled_ast)
+        # except Exception as e:
+        #     console.print_exception(max_frames=3)
+        #     if str(e) == "Unable to avoid backslash in f-string expression part":
+        #         console.log(
+        #             "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not able to escape ASCII characters in an "
+        #             "F-String expression. Please check if you have any ASCII characters in F-Strings, and escape them manually. "
+        #         )
+        #     exit(1)
+        #     return
 
-    with open(output_file_path, "w", encoding="utf8") as f:
-        f.write(src)
-    progress.update(task, completed=(completed := completed + 1), description="Done")
+        # with open(output_file_path, "w", encoding="utf8") as f:
+        #     f.write(src)
+        #     f.flush()
+        progress.update(task, completed=(completed := completed + 1), description="Done")
+    except Exception:
+        console.print_exception(show_locals=True)
 
 
 def go_transitive():
@@ -181,7 +180,7 @@ def go_transitive():
         exit(1)
     console.log("Parsing inheritance tree...", style="#4f4f4f")
     deptree = get_dependency_tree(input_file)
-    common_prefix_l = len(os.path.commonprefix(list(map(lambda x: os.path.dirname(x)+"/", deptree.keys()))))
+    common_prefix_l = len(os.path.commonpath(list(map(lambda x: os.path.dirname(x)+"/", deptree.keys()))))+1
     tree = rich.tree.Tree(
         os.path.abspath(input_file)[common_prefix_l:],
         style="green"
@@ -195,7 +194,7 @@ def go_transitive():
         for y in deptree[x]:
             if y not in all_files:
                 all_files.append(y)
-    common_prefix_l = len(os.path.commonprefix(list(map(lambda x: os.path.dirname(x)+"/", all_files))))
+    common_prefix_l = len(os.path.commonpath(list(map(lambda x: os.path.dirname(x)+"/", all_files))))+1
     progress = rich.progress.Progress(
         rich.progress.TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
         rich.progress.BarColumn(bar_width=None),
@@ -204,15 +203,42 @@ def go_transitive():
         rich.progress.TextColumn("[#4f4f4f]{task.description:>32}", justify="right"),
         console=console
     )
+    all_asts = []
+    for x in all_files:
+        with open(x, "r", encoding="utf8") as f:
+            inp_source = f.read()
+        all_asts.append(ast.parse(inp_source))
     with progress:
         with ThreadPoolExecutor(max_workers=2) as pool:
+            index = 0
             for file in all_files:
+                preparsed_ast = all_asts[index]
+                index += 1
                 task = progress.add_task("Waiting", start=False, filename=file[common_prefix_l:])
-                full_path = os.path.join(output_file, file[common_prefix_l:])
-                dname = os.path.dirname(full_path)
-                if not os.path.exists(dname):
-                    os.makedirs(dname)
-                pool.submit(do_obf, task, progress, file, full_path)
+                pool.submit(do_obf, task, progress, file, preparsed_ast, all_asts, all_files)
+    console.log("Writing")
+    for i in range(len(all_files)):
+        file = all_files[i]
+        out_ast = all_asts[i]
+        full_path = os.path.join(output_file, file[common_prefix_l:])
+        dname = os.path.dirname(full_path)
+        if not os.path.exists(dname):
+            os.makedirs(dname)
+        try:
+            src = NonEscapingUnparser().visit(out_ast)
+        except Exception as e:
+            console.print_exception(max_frames=3)
+            if str(e) == "Unable to avoid backslash in f-string expression part":
+                console.log(
+                    "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not able to escape ASCII characters in an "
+                    "F-String expression. Please check if you have any ASCII characters in F-Strings, and escape them manually. "
+                )
+            exit(1)
+            return
+
+        with open(full_path, "w", encoding="utf8") as f:
+            f.write(src)
+            f.flush()
     console.log("Done", style="green")
 
 
@@ -265,7 +291,7 @@ def go_single():
         inp_source = f.read()
     console.log("Parsing AST...", style="#4f4f4f")
     compiled_ast: AST = ast.parse(inp_source)
-    compiled_ast = transform_source(compiled_ast)
+    compiled_ast = transform_source(compiled_ast, os.path.abspath(input_file))
     console.log("Re-structuring source...", style="#4f4f4f")
     try:
         src = NonEscapingUnparser().visit(compiled_ast)
