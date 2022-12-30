@@ -126,48 +126,40 @@ def do_obf(task: rich.progress.TaskID, progress: rich.progress.Progress, input_f
     transformers_to_run = list(
         filter(lambda x: x.config["enabled"].value, all_transformers)
     )
+    completed = -1
     progress.update(task, total=2 + len(transformers_to_run) + 2)  # load, parse, transform+1, unparse
     progress.start_task(task)
-    progress.update(task, completed=0, description="Loading source")
-    tme.sleep(1)
+    progress.update(task, completed=(completed := completed + 1), description="Loading source")
     with open(input_file, "r", encoding="utf8") as f:
         inp_source = f.read()
-    progress.update(task, completed=1, description="Parsing source")
-    tme.sleep(1)
+    progress.update(task, completed=(completed := completed + 1), description="Parsing source")
     compiled_ast: AST = ast.parse(inp_source)
-    progress.update(task, completed=2, description="Running transformers")
-    tme.sleep(1)
+    progress.update(task, completed=(completed := completed + 1), description="Running transformers")
     if len(transformers_to_run) == 0:
         console.log("Nothing to do, bailing out", style="red")
         exit(0)
     p = 1
     for t in transformers_to_run:
-        progress.update(task, completed=2 + p, description="Transformer " + t.name)
-        tme.sleep(1)
+        progress.update(task, completed=(completed := completed + 1), description="Transformer " + t.name)
         compiled_ast = t.transform(compiled_ast)
         p += 1
     fix_missing_locations(compiled_ast)
-    progress.update(task, completed=3 + len(transformers_to_run), description="Writing")
-    tme.sleep(1)
+    progress.update(task, completed=(completed := completed + 1), description="Writing")
     try:
         src = NonEscapingUnparser().visit(compiled_ast)
     except Exception as e:
         console.print_exception(max_frames=3)
         if str(e) == "Unable to avoid backslash in f-string expression part":
             console.log(
-                "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not "
-                "able to escape ASCII"
-                "characters in an F-String expression. Please check if you have any "
-                "ASCII characters in F-Strings, and escape them manually."
+                "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not able to escape ASCII characters in an "
+                "F-String expression. Please check if you have any ASCII characters in F-Strings, and escape them manually. "
             )
         exit(1)
         return
 
     with open(output_file_path, "w", encoding="utf8") as f:
         f.write(src)
-    progress.update(task, completed=3 + len(transformers_to_run) + 1, description="Done")
-    tme.sleep(1)
-    # progress.stop_task(task)
+    progress.update(task, completed=(completed := completed + 1), description="Done")
 
 
 def go_transitive():
@@ -208,11 +200,11 @@ def go_transitive():
         rich.progress.BarColumn(bar_width=None),
         "[progress.percentage]{task.percentage:>3.1f}%",
         "•",
-        rich.progress.TextColumn("[#4f4f4f]{task.description:>40}", justify="right"),
+        rich.progress.TextColumn("[#4f4f4f]{task.description:>32}", justify="right"),
         console=console
     )
     with progress:
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        with ThreadPoolExecutor(max_workers=2) as pool:
             for file in all_files:
                 task = progress.add_task("Waiting", start=False, filename=file[common_prefix_l:])
                 full_path = os.path.join(output_file, file[common_prefix_l:])
