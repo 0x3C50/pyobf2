@@ -1,6 +1,5 @@
-import ast
 from ast import *
-from typing import Any, List
+from typing import Any
 
 
 class MappingGenerator(NodeVisitor):
@@ -167,7 +166,7 @@ class MappingGenerator(NodeVisitor):
     def visit_Name(self, node: Name) -> Any:
         if isinstance(node.ctx, Store):
             if node.id != "self":
-                if len(self.location_stack) == 0 or not self.location_stack[len(self.location_stack)-1].startswith("cl_"):
+                if len(self.location_stack) == 0 or not self.location_stack[len(self.location_stack) - 1].startswith("cl_"):
                     self.put_name_if_absent(node.id, self.mapping_name("var"))
         self.generic_visit(node)
 
@@ -179,10 +178,10 @@ def grade_name_order(name: str):
 
 
 class OtherFileMappingApplicator(NodeVisitor):
-    def __init__(self, mappings: dict[str, str], owning_module, all_els_in_other_file: list[str]):
+    def __init__(self, mappings: dict[str, str], owning_module_names: list[str], all_els_in_other_file: list[str]):
         self.mappings = mappings
         self.all_els = all_els_in_other_file
-        self.owning_module = owning_module
+        self.owning_modules = owning_module_names
         self.names_containing_module = []
 
     def _resolve_attr(self, node: Attribute) -> str | None:
@@ -213,7 +212,11 @@ class OtherFileMappingApplicator(NodeVisitor):
         return self.mappings[m] if m in self.mappings else m
 
     def visit_ImportFrom(self, node: ImportFrom) -> Any:
-        if self._import_matches(node.module):
+        resolved_mod = node.module
+        if resolved_mod is None:
+            resolved_mod = ""
+        resolved_mod = "." * node.level + resolved_mod
+        if self._import_matches(resolved_mod):
             if len(node.names) == 1 and node.names[0].name == "*":  # why the fuck
                 node.names = [
                     alias(name=self._map_name(x), asname=x) for x in self.all_els
@@ -224,9 +227,11 @@ class OtherFileMappingApplicator(NodeVisitor):
                 x.name = self._map_name(x.name)
 
     def _import_matches(self, import_name: str) -> bool:
-        if import_name.startswith(".") and not import_name.startswith(".."):
-            import_name = import_name[1:]
-        return import_name == self.owning_module
+        # if import_name.startswith(".") and not import_name.startswith(".."):
+        #     import_name = import_name[1:]
+        # elif import_name.startswith(".."):
+        #     import_name = import_name[2:]
+        return import_name in self.owning_modules
 
     def visit_Import(self, node: Import) -> Any:
         for x in node.names:
@@ -279,7 +284,7 @@ class OtherFileMappingApplicator(NodeVisitor):
         jesus fucking christ
         """
         if isinstance(node.value, Call) and isinstance(node.value.func, Name) and node.value.func.id == "__import__" and len(node.value.args) > 0 \
-                and isinstance(node.value.args[0], Constant) and node.value.args[0].value == self.owning_module:  # aka __import__("our module name")
+                and isinstance(node.value.args[0], Constant) and node.value.args[0].value in self.owning_modules:  # aka __import__("our module name")
             for x in node.targets:
                 name = self._resolve_attr(x) if isinstance(x, Attribute) else (x.id if isinstance(x, Name) else None)
                 if name is None:
@@ -287,7 +292,7 @@ class OtherFileMappingApplicator(NodeVisitor):
                 if name not in self.names_containing_module:
                     self.names_containing_module.append(name)
         elif (isinstance(node.value, Attribute) or isinstance(node.value, Name)) and \
-            (self._resolve_attr(node.value) if isinstance(node.value, Attribute) else (node.value.id if isinstance(node.value, Name) else None)) \
+                (self._resolve_attr(node.value) if isinstance(node.value, Attribute) else (node.value.id if isinstance(node.value, Name) else None)) \
                 in self.names_containing_module:  # aka something = something_that_we_know_is_our_module
             for x in node.targets:
                 name2 = self._resolve_attr(x) if isinstance(x, Attribute) else (x.id if isinstance(x, Name) else None)

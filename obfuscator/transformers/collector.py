@@ -7,9 +7,8 @@ from _ast import Name, Load, Subscript, Constant, Assign, Store, Call, Attribute
 from ast import NodeTransformer
 from typing import Any
 
-from assembler import Assembler
-from transformers import Transformer, rnd_name
-from util import optimize_ast, ast_import_full
+from . import Transformer, rnd_name, optimize_ast, ast_import_full
+from ..assembler import Assembler
 
 
 class Collector(Transformer, NodeTransformer):

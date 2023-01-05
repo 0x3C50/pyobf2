@@ -1,9 +1,9 @@
 import os
 from _ast import AST
 
-from cfg import ConfigValue
-from renamer import MappingGenerator, MappingApplicator, OtherFileMappingApplicator
-from transformers import Transformer, compute_import_path
+from . import Transformer, compute_import_path
+from ..cfg import ConfigValue
+from ..renamer import MappingGenerator, MappingApplicator, OtherFileMappingApplicator
 
 
 class MemberRenamer(Transformer):
@@ -34,6 +34,8 @@ class MemberRenamer(Transformer):
                     continue
                 that_file_name = os.path.abspath(all_file_names[i])
                 required_import = compute_import_path(that_file_name, this_file_name)
-                # self.console.log(required_import)
-                OtherFileMappingApplicator(mappings1, required_import, list(mappings1.keys())).visit(that_ast)
+                root_name = list(all_file_names)
+                root_name.sort(key=lambda x: len(x.split(os.path.sep)))
+                OtherFileMappingApplicator(mappings1, [required_import, compute_import_path(root_name[0], this_file_name)], list(mappings1.keys())) \
+                    .visit(that_ast)
         return ast

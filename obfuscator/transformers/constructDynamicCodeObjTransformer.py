@@ -10,9 +10,9 @@ from typing import Any, Callable
 
 from Crypto.Cipher import AES
 
-from cfg import ConfigValue
-from transformers import Transformer, rnd_name
-from util import randomize_cache, ast_import_from, ast_import_full
+from . import Transformer, rnd_name, ast_import_from, ast_import_full
+from ..cfg import ConfigValue
+from ..util import randomize_cache
 
 
 class ConstructDynamicCodeObject(Transformer):

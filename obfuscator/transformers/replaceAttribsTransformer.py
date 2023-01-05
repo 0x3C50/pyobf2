@@ -2,7 +2,7 @@ from _ast import Assign, Attribute, Expr, Call, Name, Load, Constant, AST
 from ast import NodeTransformer
 from typing import Any
 
-from transformers import Transformer
+from . import Transformer
 
 
 class ReplaceAttribs(Transformer, NodeTransformer):

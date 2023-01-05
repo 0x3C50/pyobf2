@@ -4,8 +4,7 @@ from _ast import JoinedStr, FormattedValue, Constant, Call, Attribute, Load, AST
 from ast import NodeTransformer
 from typing import Any
 
-from transformers import Transformer
-from util import ast_import_full
+from . import Transformer, ast_import_full
 
 
 class EncodeStrings(Transformer, NodeTransformer):

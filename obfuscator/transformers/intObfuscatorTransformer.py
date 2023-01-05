@@ -4,7 +4,7 @@ from _ast import Constant, Call, Attribute, Name, Load, Lambda, arguments, arg, 
 from ast import NodeTransformer
 from typing import Any
 
-from transformers import Transformer
+from . import Transformer
 
 
 class IntObfuscator(Transformer, NodeTransformer):

@@ -2,7 +2,7 @@ from _ast import JoinedStr, FormattedValue, Call, Name, Load, Constant, Attribut
 from ast import NodeTransformer
 from typing import Any
 
-from transformers import Transformer, collect_fstring_consts
+from . import Transformer, collect_fstring_consts
 
 
 class FstringsToFormatSequence(Transformer, NodeTransformer):

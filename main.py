@@ -5,7 +5,7 @@ tried_relaunch = False
 
 def launch():
     try:
-        import main
+        import obfuscator.main as main
         main.main()
     except ModuleNotFoundError:
         global tried_relaunch

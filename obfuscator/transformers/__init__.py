@@ -1,10 +1,12 @@
+import ast
 import os.path
 import random
+from ast import *
 
 import rich
 
-from cfg import ConfigSegment, ConfigValue
-from ast import *
+from ..cfg import ConfigSegment, ConfigValue
+from ..renamer import MappingGenerator, MappingApplicator
 
 
 class Transformer(object):
@@ -41,6 +43,8 @@ def compute_import_path(from_path: str, to_path: str):
     full_imp = full_imp[:-1]
     if full_imp.endswith(".py"):
         full_imp = full_imp[:-3]
+    if len(full_imp) == 0:
+        full_imp = "."
     return full_imp
 
 
@@ -56,3 +60,39 @@ def collect_fstring_consts(node: JoinedStr) -> str:
         else:
             raise ValueError("Non-constant format specs are not supported")
     return s
+
+
+def optimize_ast(ast1: AST):
+    generator = MappingGenerator('f"{kind[0]}{get_counter(kind)}"')
+    generator.visit(ast1)
+    MappingApplicator(generator.mappings).visit(ast1)
+    for x in ast.walk(ast1):
+        if isinstance(x, (AsyncFunctionDef, FunctionDef, ClassDef, Module)):
+            clear_docstring(x)
+    return ast1
+
+
+def clear_docstring(node):
+    if not isinstance(node, (AsyncFunctionDef, FunctionDef, ClassDef, Module)):
+        raise TypeError("%r can't have docstrings" % node.__class__.__name__)
+    if not (node.body and isinstance(node.body[0], Expr)):
+        return None
+    nnode = node.body[0].value
+    if isinstance(nnode, Str) or (isinstance(nnode, Constant) and isinstance(nnode.value, str)):
+        del node.body[0]
+
+
+def ast_import_from(name: str, *names) -> ImportFrom:
+    return ImportFrom(
+        module=name,
+        names=[alias(name=x) for x in names],
+        level=0
+    )
+
+
+def ast_import_full(name: str) -> Call:
+    return Call(
+        func=Name('__import__', Load()),
+        args=[Constant(name)],
+        keywords=[]
+    )

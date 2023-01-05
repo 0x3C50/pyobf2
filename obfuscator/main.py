@@ -11,16 +11,16 @@ from rich.console import Console
 from rich.progress import track
 from tomlkit import *
 
-import constructDynamicCodeObjTransformer
-import encodeStringsTransformer
-import fstrToFormatTransformer
-import intObfuscatorTransformer
-import memberRenamerTransformer
-import removeTypeHintsTransformer
-import replaceAttribsTransformer
-import collector
-from cfg import *
-from util import NonEscapingUnparser, get_dependency_tree
+from obfuscator.cfg import *
+from obfuscator.transformers.collector import Collector
+from obfuscator.transformers.constructDynamicCodeObjTransformer import ConstructDynamicCodeObject
+from obfuscator.transformers.encodeStringsTransformer import EncodeStrings
+from obfuscator.transformers.fstrToFormatTransformer import FstringsToFormatSequence
+from obfuscator.transformers.intObfuscatorTransformer import IntObfuscator
+from obfuscator.transformers.memberRenamerTransformer import MemberRenamer
+from obfuscator.transformers.removeTypeHintsTransformer import RemoveTypeHints
+from obfuscator.transformers.replaceAttribsTransformer import ReplaceAttribs
+from obfuscator.util import NonEscapingUnparser, get_dependency_tree
 
 colorama.init()
 
@@ -34,6 +34,7 @@ general_settings = ConfigSegment(
     input_file=ConfigValue("The input for the obfuscator", "input.py"),
     output_file=ConfigValue("The output for the obfuscator", "output.py"),
     transitive=ConfigValue("Resolves local imports from the target file and obfuscates them aswell", True),
+    manual_include=ConfigValue("Manually includes these files in transitive mode, if the automatic import resolver doesn't find them", []),
     overwrite_output_forcefully=ConfigValue("Skips the existance check of the output file. This WILL nuke the output file if it already exists",
                                             False)
 )
@@ -43,14 +44,14 @@ all_config_segments = [general_settings]
 all_transformers = [
     x()
     for x in [
-        removeTypeHintsTransformer.RemoveTypeHints,
-        fstrToFormatTransformer.FstringsToFormatSequence,
-        intObfuscatorTransformer.IntObfuscator,
-        encodeStringsTransformer.EncodeStrings,
-        memberRenamerTransformer.MemberRenamer,
-        replaceAttribsTransformer.ReplaceAttribs,
-        constructDynamicCodeObjTransformer.ConstructDynamicCodeObject,
-        collector.Collector,
+        RemoveTypeHints,
+        FstringsToFormatSequence,
+        IntObfuscator,
+        EncodeStrings,
+        MemberRenamer,
+        ReplaceAttribs,
+        ConstructDynamicCodeObject,
+        Collector,
     ]
 ]
 
@@ -156,6 +157,38 @@ def do_obf(task: rich.progress.TaskID, progress: rich.progress.Progress, current
         console.print_exception(show_locals=True)
 
 
+def resolve_file_spec(fspec: str) -> list[str]:
+    if "**" in fspec:
+        if fspec.count("**") > 1:
+            raise ValueError(f"Invalid file specifier {fspec}, ** can only occur once")
+        if not fspec.endswith("**"):
+            raise ValueError(f"Invalid file specifier {fspec}, ** has to be at the end of the specifier")
+        prefix = fspec[:-2]
+        prefix = os.path.abspath(prefix)
+        if not os.path.isdir(prefix):
+            raise ValueError(f"Invalid file specifier {fspec}, ** prefix {prefix} is not a directory or doesn't exist")
+        from pathlib import Path
+        all_pys = list(Path(prefix).rglob("*.[pP][yY]"))
+        return [str(x.absolute()) for x in all_pys]
+    elif "*" in fspec:
+        if fspec.count("*") > 1:
+            raise ValueError(f"Invalid file specifier {fspec}, * can only occur once")
+        if not fspec.endswith("*"):
+            raise ValueError(f"Invalid file specifier {fspec}, * has to be at the end of the specifier")
+        prefix = fspec[:-2]
+        prefix = os.path.abspath(prefix)
+        if not os.path.isdir(prefix):
+            raise ValueError(f"Invalid file specifier {fspec}, * prefix {prefix} is not a directory or doesn't exist")
+        from pathlib import Path
+        all_pys = list(Path(prefix).glob("*.[pP][yY]"))
+        return [str(x.absolute()) for x in all_pys]
+    else:
+        absp = os.path.abspath(fspec)
+        if not os.path.isfile(absp):
+            raise ValueError(f"Invalid file specifier {fspec}, target is not a file or does not exist")
+        return [absp]
+
+
 def go_transitive():
     input_file = general_settings["input_file"].value
     output_file = general_settings["output_file"].value
@@ -178,7 +211,7 @@ def go_transitive():
         console.log("Transitive run with no dependencies, aborting\nSet transitive to false in your config.toml if you have only one file",
                     style="red")
         exit(1)
-    common_prefix_l = len(os.path.commonpath(list(map(lambda x: os.path.dirname(x)+"/", deptree.keys()))))+1
+    common_prefix_l = len(os.path.commonpath(list(map(lambda x: os.path.dirname(x) + "/", deptree.keys())))) + 1
     tree = rich.tree.Tree(
         os.path.abspath(input_file)[common_prefix_l:],
         style="green"
@@ -192,7 +225,17 @@ def go_transitive():
         for y in deptree[x]:
             if y not in all_files:
                 all_files.append(y)
-    common_prefix_l = len(os.path.commonpath(list(map(lambda x: os.path.dirname(x)+"/", all_files))))+1
+    manual_files = [os.path.abspath(x) for x in general_settings["manual_include"].value]
+    for x in manual_files:
+        try:
+            all_files += resolve_file_spec(x)
+        except ValueError as e:
+            console.log(e, style="red")
+            exit(1)
+        # if not os.path.exists(x) or not os.path.isfile(x):
+        #     console.log(f"Invalid / nonexistant file {x}, cannot continue", style="red")
+        #     exit(1)
+    common_prefix_l = len(os.path.commonpath(list(map(lambda x: os.path.dirname(x) + "/", all_files)))) + 1
     progress = rich.progress.Progress(
         rich.progress.TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
         rich.progress.BarColumn(bar_width=None),
@@ -217,7 +260,7 @@ def go_transitive():
     if len(transformers_to_run) == 0:
         console.log("Nothing to do, bailing out", style="red")
         exit(0)
-    task_labels = [*["Transformer "+x.name for x in transformers_to_run], "Done"]
+    task_labels = [*["Transformer " + x.name for x in transformers_to_run], "Done"]
     with progress:
         for trafo in transformers_to_run:
             for index in range(len(all_files)):
@@ -227,16 +270,14 @@ def go_transitive():
                 comp_i = progress._tasks[task].completed
                 if comp_i == 0:
                     progress.start_task(task)
-                progress.update(task, total=len(task_labels), completed=comp_i+1, description=task_labels[math.floor(comp_i)])
+                progress.update(task, total=len(task_labels), completed=comp_i + 1, description=task_labels[math.floor(comp_i)])
                 all_asts[index] = fix_missing_locations(trafo.transform(all_asts[index], file, all_asts, all_files))
 
         for index in range(len(all_files)):
             task = all_tasks[index]
             progress.update(task, total=len(task_labels))
             comp_i = progress._tasks[task].completed
-            progress.update(task, total=len(task_labels), completed=comp_i+1, description=task_labels[math.floor(comp_i)])
-
-
+            progress.update(task, total=len(task_labels), completed=comp_i + 1, description=task_labels[math.floor(comp_i)])
 
     console.log("Writing")
     for i in range(len(all_files)):

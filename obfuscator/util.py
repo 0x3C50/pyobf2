@@ -1,5 +1,4 @@
 import ast
-import inspect
 import opcode
 import os.path
 import random
@@ -94,43 +93,6 @@ def randomize_cache(bc: list[int]):
         reader += cache_bytes
 
 
-def ast_import_full(name: str) -> Call:
-    return Call(
-        func=Name('__import__', Load()),
-        args=[Constant(name)],
-        keywords=[]
-    )
-
-
-def optimize_ast(ast1: AST):
-    from renamer import MappingGenerator, MappingApplicator
-    generator = MappingGenerator('f"{kind[0]}{get_counter(kind)}"')
-    generator.visit(ast1)
-    MappingApplicator(generator.mappings).visit(ast1)
-    for x in ast.walk(ast1):
-        if isinstance(x, (AsyncFunctionDef, FunctionDef, ClassDef, Module)):
-            clear_docstring(x)
-    return ast1
-
-
-def clear_docstring(node):
-    if not isinstance(node, (AsyncFunctionDef, FunctionDef, ClassDef, Module)):
-        raise TypeError("%r can't have docstrings" % node.__class__.__name__)
-    if not (node.body and isinstance(node.body[0], Expr)):
-        return None
-    nnode = node.body[0].value
-    if isinstance(nnode, Str) or (isinstance(nnode, Constant) and isinstance(nnode.value, str)):
-        del node.body[0]
-
-
-def ast_import_from(name: str, *names) -> ImportFrom:
-    return ImportFrom(
-        module=name,
-        names=[alias(name=x) for x in names],
-        level=0
-    )
-
-
 def get_file_from_import(from_file: str, name: str):
     if name.startswith(".."):
         pname = os.path.normpath(os.path.join(os.path.dirname(from_file), ".."))
@@ -181,22 +143,3 @@ def get_dependency_tree(start: str):
     with open(start, "r", encoding="utf8") as f:
         _walk_deptree(os.path.abspath(start), ast.parse(f.read()), resolved_files)
     return resolved_files
-
-
-if __name__ == '__main__':
-    s = """
-\"\"\"
-Just a docstring
-\"\"\"
-def abc(dd):
-    \"\"\"
-    Just a docstring
-    \"\"\"
-    print("hi", dd)
-
-abc('123')
-    """
-    a = ast.parse(s)
-    print(ast.unparse(a))
-    optimize_ast(a)
-    print(ast.unparse(a))
