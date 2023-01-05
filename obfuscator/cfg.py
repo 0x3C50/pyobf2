@@ -6,8 +6,8 @@ class ConfigValue:
         self.desc = desc
         self.value = default
 
-    def __repr__(self):
-        return f"ConfigValue({repr(self.desc)}, {repr(self.value)})"
+    # def __repr__(self):
+    #     return f"ConfigValue({repr(self.desc)}, {repr(self.value)})"
 
 
 class ConfigSegment(dict):

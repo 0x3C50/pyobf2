@@ -1,7 +1,8 @@
 import ast
+import math
 import os.path
+import time as tme
 from ast import *
-from concurrent.futures import ThreadPoolExecutor
 
 import colorama
 import rich.tree
@@ -9,9 +10,15 @@ import tomlkit
 from rich.console import Console
 from rich.progress import track
 from tomlkit import *
-import time as tme
 
-import transformers as transf
+import constructDynamicCodeObjTransformer
+import encodeStringsTransformer
+import fstrToFormatTransformer
+import intObfuscatorTransformer
+import memberRenamerTransformer
+import removeTypeHintsTransformer
+import replaceAttribsTransformer
+import varAccessToGLDictTransformer
 from cfg import *
 from util import NonEscapingUnparser, get_dependency_tree
 
@@ -26,7 +33,9 @@ general_settings = ConfigSegment(
     "General settings for the obfuscator",
     input_file=ConfigValue("The input for the obfuscator", "input.py"),
     output_file=ConfigValue("The output for the obfuscator", "output.py"),
-    transitive=ConfigValue("Resolves local imports from the target file and obfuscates them aswell", True)
+    transitive=ConfigValue("Resolves local imports from the target file and obfuscates them aswell", True),
+    overwrite_output_forcefully=ConfigValue("Skips the existance check of the output file. This WILL nuke the output file if it already exists",
+                                            False)
 )
 
 all_config_segments = [general_settings]
@@ -34,13 +43,14 @@ all_config_segments = [general_settings]
 all_transformers = [
     x()
     for x in [
-        transf.FstringsToFormatSequence,
-        transf.IntObfuscator,
-        transf.EncodeStrings,
-        transf.MemberRenamer,
-        transf.ReplaceAttribs,
-        transf.Collector,
-        transf.ConstructDynamicCodeObject,
+        removeTypeHintsTransformer.RemoveTypeHints,
+        fstrToFormatTransformer.FstringsToFormatSequence,
+        intObfuscatorTransformer.IntObfuscator,
+        encodeStringsTransformer.EncodeStrings,
+        memberRenamerTransformer.MemberRenamer,
+        replaceAttribsTransformer.ReplaceAttribs,
+        constructDynamicCodeObjTransformer.ConstructDynamicCodeObject,
+        varAccessToGLDictTransformer.Collector,
     ]
 ]
 
@@ -123,8 +133,7 @@ def transform_source(c_ast: AST, source_file_name: str) -> AST:
     return c_ast
 
 
-def do_obf(task: rich.progress.TaskID, progress: rich.progress.Progress, current_file_path, preparsed: AST, other_asts,
-           other_file_paths):
+def do_obf(task: rich.progress.TaskID, progress: rich.progress.Progress, current_file_path, all_asts, the_index, other_file_paths):
     try:
         transformers_to_run = list(
             filter(lambda x: x.config["enabled"].value, all_transformers)
@@ -132,32 +141,17 @@ def do_obf(task: rich.progress.TaskID, progress: rich.progress.Progress, current
         completed = -1
         progress.update(task, total=len(transformers_to_run) + 1)  # transform+1
         progress.start_task(task)
-        compiled_ast: AST = preparsed
         progress.update(task, completed=(completed := completed + 1), description="Running transformers")
         if len(transformers_to_run) == 0:
             console.log("Nothing to do, bailing out", style="red")
             exit(0)
         for t in transformers_to_run:
             progress.update(task, completed=(completed := completed + 1), description="Transformer " + t.name)
-            compiled_ast = t.transform(compiled_ast, current_file_path, other_asts, other_file_paths)
-        fix_missing_locations(compiled_ast)
-        # progress.update(task, completed=(completed := completed + 1), description="Writing")
-        # try:
-        #     src = NonEscapingUnparser().visit(compiled_ast)
-        # except Exception as e:
-        #     console.print_exception(max_frames=3)
-        #     if str(e) == "Unable to avoid backslash in f-string expression part":
-        #         console.log(
-        #             "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not able to escape ASCII characters in an "
-        #             "F-String expression. Please check if you have any ASCII characters in F-Strings, and escape them manually. "
-        #         )
-        #     exit(1)
-        #     return
-
-        # with open(output_file_path, "w", encoding="utf8") as f:
-        #     f.write(src)
-        #     f.flush()
+            all_asts[the_index] = t.transform(all_asts[the_index], current_file_path, all_asts, other_file_paths)
+            tme.sleep(5)
+        all_asts[the_index] = fix_missing_locations(all_asts[the_index])
         progress.update(task, completed=(completed := completed + 1), description="Done")
+        return all_asts[the_index]
     except Exception:
         console.print_exception(show_locals=True)
 
@@ -180,6 +174,10 @@ def go_transitive():
         exit(1)
     console.log("Parsing inheritance tree...", style="#4f4f4f")
     deptree = get_dependency_tree(input_file)
+    if len(deptree) == 0:
+        console.log("Transitive run with no dependencies, aborting\nSet transitive to false in your config.toml if you have only one file",
+                    style="red")
+        exit(1)
     common_prefix_l = len(os.path.commonpath(list(map(lambda x: os.path.dirname(x)+"/", deptree.keys()))))+1
     tree = rich.tree.Tree(
         os.path.abspath(input_file)[common_prefix_l:],
@@ -208,14 +206,38 @@ def go_transitive():
         with open(x, "r", encoding="utf8") as f:
             inp_source = f.read()
         all_asts.append(ast.parse(inp_source))
+    all_tasks = []
+    for file in all_files:
+        task1 = progress.add_task("Waiting", start=False, filename=file[common_prefix_l:])
+        all_tasks.append(task1)
+
+    transformers_to_run = list(
+        filter(lambda x: x.config["enabled"].value, all_transformers)
+    )
+    if len(transformers_to_run) == 0:
+        console.log("Nothing to do, bailing out", style="red")
+        exit(0)
+    task_labels = [*["Transformer "+x.name for x in transformers_to_run], "Done"]
     with progress:
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            index = 0
-            for file in all_files:
-                preparsed_ast = all_asts[index]
-                index += 1
-                task = progress.add_task("Waiting", start=False, filename=file[common_prefix_l:])
-                pool.submit(do_obf, task, progress, file, preparsed_ast, all_asts, all_files)
+        for trafo in transformers_to_run:
+            for index in range(len(all_files)):
+                task = all_tasks[index]
+                file = all_files[index]
+                progress.update(task, total=len(task_labels))
+                comp_i = progress._tasks[task].completed
+                if comp_i == 0:
+                    progress.start_task(task)
+                progress.update(task, total=len(task_labels), completed=comp_i+1, description=task_labels[math.floor(comp_i)])
+                all_asts[index] = fix_missing_locations(trafo.transform(all_asts[index], file, all_asts, all_files))
+
+        for index in range(len(all_files)):
+            task = all_tasks[index]
+            progress.update(task, total=len(task_labels))
+            comp_i = progress._tasks[task].completed
+            progress.update(task, total=len(task_labels), completed=comp_i+1, description=task_labels[math.floor(comp_i)])
+
+
+
     console.log("Writing")
     for i in range(len(all_files)):
         file = all_files[i]
@@ -233,6 +255,7 @@ def go_transitive():
                     "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not able to escape ASCII characters in an "
                     "F-String expression. Please check if you have any ASCII characters in F-Strings, and escape them manually. "
                 )
+                console.log("Current file:", full_path)
             exit(1)
             return
 
@@ -247,12 +270,6 @@ def recurse_tree_inner(orig, m, common_prefix_len: int, tree: rich.tree.Tree):
         el = tree.add(x[common_prefix_len:])
         if x in orig:
             recurse_tree_inner(orig, orig[x], common_prefix_len, el)
-
-
-# def recurse_tree(m, common_prefix_len: int, tree: rich.tree.Tree):
-#     for x in m.keys():
-#         el = tree.add(x[common_prefix_len:])
-#         recurse_tree_inner(m, m[x], common_prefix_len, el)
 
 
 def go_single():
@@ -271,7 +288,7 @@ def go_single():
     ):  # output "file" is a dir
         base = os.path.basename(input_file)  # so append the input file name to it
         output_file = os.path.join(output_file, base)
-    if os.path.exists(output_file):
+    if os.path.exists(output_file) and not general_settings["overwrite_output_forcefully"].value:
         console.log(
             "The output path at",
             output_file,
@@ -279,7 +296,7 @@ def go_single():
             style="yellow",
         )
         base1 = os.path.basename(output_file)
-        base1 = ".".join(base1.split(".")[0:-1])
+        base1 = ".".join(base1.split(".")[0:-1]) if base1.endswith(".py") else base1
         attempts = 0
         while os.path.exists(output_file):
             output_file = os.path.join(
@@ -299,10 +316,8 @@ def go_single():
         console.print_exception(max_frames=3)
         if str(e) == "Unable to avoid backslash in f-string expression part":
             console.log(
-                "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not "
-                "able to escape ASCII"
-                "characters in an F-String expression. Please check if you have any "
-                "ASCII characters in F-Strings, and escape them manually."
+                "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not able to escape ASCII characters in an "
+                "F-String expression. Please check if you have any ASCII characters in F-Strings, and escape them manually. "
             )
         exit(1)
         return
