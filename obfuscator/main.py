@@ -18,7 +18,7 @@ import intObfuscatorTransformer
 import memberRenamerTransformer
 import removeTypeHintsTransformer
 import replaceAttribsTransformer
-import varAccessToGLDictTransformer
+import collector
 from cfg import *
 from util import NonEscapingUnparser, get_dependency_tree
 
@@ -50,7 +50,7 @@ all_transformers = [
         memberRenamerTransformer.MemberRenamer,
         replaceAttribsTransformer.ReplaceAttribs,
         constructDynamicCodeObjTransformer.ConstructDynamicCodeObject,
-        varAccessToGLDictTransformer.Collector,
+        collector.Collector,
     ]
 ]
 
