@@ -21,6 +21,7 @@ from obfuscator.transformers.memberRenamerTransformer import MemberRenamer
 from obfuscator.transformers.packPyz import PackInPyz
 from obfuscator.transformers.removeTypeHintsTransformer import RemoveTypeHints
 from obfuscator.transformers.replaceAttribsTransformer import ReplaceAttribs
+from obfuscator.transformers.compileFinalFiles import CompileFinalFiles
 from obfuscator.util import NonEscapingUnparser, get_dependency_tree
 
 colorama.init()
@@ -53,6 +54,7 @@ all_transformers = [
         ReplaceAttribs,
         ConstructDynamicCodeObject,
         Collector,
+        CompileFinalFiles,
         PackInPyz
     ]
 ]
@@ -270,7 +272,7 @@ def go_transitive():
     console.log("Doing post run")
     all_outs = [Path(os.path.join(output_file, x[common_prefix_l:])) for x in all_files]
     for trafo in transformers_to_run:
-        trafo.transform_output(Path(output_file), all_outs)
+        all_outs = trafo.transform_output(Path(output_file), all_outs)
     console.log("Done", style="green")
 
 

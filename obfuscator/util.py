@@ -3,6 +3,7 @@ import importlib.util
 import opcode
 import os.path
 import random
+import sys
 from ast import *
 
 _SINGLE_QUOTES = ("'", '"')
@@ -99,7 +100,7 @@ def get_file_from_import(name: str, modu: str):
         if sp is None or sp.origin is None:
             return None
         return sp
-    except:
+    except Exception as e:
         return None
 
 
@@ -149,6 +150,10 @@ def _walk_deptree(namespace: str, current_file: str, current_package: str, start
 
 def get_dependency_tree(start: str):
     resolved_files = {}
+    previous_path = sys.path
+    ns = os.path.dirname(os.path.abspath(start))
+    sys.path.insert(0, ns)
     with open(start, "r", encoding="utf8") as f:
-        _walk_deptree(os.path.dirname(os.path.abspath(start)), os.path.abspath(start), "", ast.parse(f.read()), resolved_files)
+        _walk_deptree(ns, os.path.abspath(start), "", ast.parse(f.read()), resolved_files)
+    sys.path = previous_path
     return resolved_files

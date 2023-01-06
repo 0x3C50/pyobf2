@@ -1,3 +1,4 @@
+import math
 import opcode
 from types import CodeType
 from typing import Any
@@ -10,9 +11,9 @@ class _insn:
 
     def to_bc_seq(self):
         bl = self.arg.bit_length()
-        if bl > 4:
+        if bl > 4*8:
             raise ValueError(f"Arg {self.arg} is too big to pack into 4 bytes")
-        arg_bytes = self.arg.to_bytes(bl, "big", signed=False)
+        arg_bytes = self.arg.to_bytes(math.ceil(bl/8), "big", signed=False)
         if len(arg_bytes) == 0:
             arg_bytes = b'\x00'
         constructed = []
