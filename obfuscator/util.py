@@ -5,6 +5,7 @@ import os.path
 import random
 import sys
 from ast import *
+from types import CodeType
 
 _SINGLE_QUOTES = ("'", '"')
 _MULTI_QUOTES = ('"""', "'''")
@@ -157,3 +158,12 @@ def get_dependency_tree(start: str):
         _walk_deptree(ns, os.path.abspath(start), "", ast.parse(f.read()), resolved_files)
     sys.path = previous_path
     return resolved_files
+
+
+def strip_lnotab(c: CodeType) -> CodeType:
+    consts = []
+    for item in c.co_consts:
+        if isinstance(item, CodeType):
+            item = strip_lnotab(item)
+        consts.append(item)
+    return c.replace(co_linetable=b"", co_consts=tuple(consts))

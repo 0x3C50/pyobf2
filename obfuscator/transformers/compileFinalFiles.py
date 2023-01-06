@@ -1,11 +1,19 @@
+import dis
 import marshal
+import opcode
 import os.path
 import pathlib
+import random
+from types import CodeType
 
+from obfuscator.assembler import Assembler
+from obfuscator.cfg import ConfigValue
 from obfuscator.transformers import Transformer
 
 import struct
 import sys
+
+from obfuscator.util import strip_lnotab
 
 
 def _pack_uint32(val):
@@ -52,7 +60,8 @@ def do_compile(p_file: pathlib.Path):
     root_file = os.path.splitext(p_file)[0]
     with open(p_file, "rb") as f, open(root_file + ".pyc", "wb") as out:
         src = f.read()
-        compiled = compile(src, "", "exec", optimize=2)
+        compiled: CodeType = compile(src, "", "exec", optimize=2)
+        compiled = strip_lnotab(compiled)
         dumped = marshal.dumps(compiled)
         bc_content = _code_to_bytecode(dumped)
         out.write(bc_content)
