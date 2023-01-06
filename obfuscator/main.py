@@ -1,7 +1,6 @@
 import ast
 import math
 import os.path
-import sys
 from ast import *
 from pathlib import Path
 
@@ -24,10 +23,7 @@ from obfuscator.transformers.removeTypeHintsTransformer import RemoveTypeHints
 from obfuscator.transformers.replaceAttribsTransformer import ReplaceAttribs
 from obfuscator.util import NonEscapingUnparser, get_dependency_tree
 
-# sys.setrecursionlimit(1 << 30)
-
 colorama.init()
-
 
 console = Console()
 
@@ -351,5 +347,4 @@ def go_single():
     out_file_path = Path(output_file)
     for t in track(transformers_to_run, description="Post run...", console=console):
         t.transform_output(out_file_path.parent, [out_file_path])
-        # compiled_ast = t.transform(compiled_ast, absolute_input_file, None, None)  # just this one
     console.log("Done", style="green")

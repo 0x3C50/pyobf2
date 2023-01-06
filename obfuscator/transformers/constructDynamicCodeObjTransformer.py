@@ -44,7 +44,6 @@ class ConstructDynamicCodeObject(Transformer):
                          encrypt=ConfigValue("Encrypts the bytecode with a dynamically generated AES key", True))
 
     def get_all_code_objects(self, args):
-        # args = self.args_from_co(code)
         all_cos = []
         for x in args:
             if isinstance(x, list) or isinstance(x, tuple):
@@ -95,10 +94,6 @@ class ConstructDynamicCodeObject(Transformer):
                     keywords=[]
                 )
         else:
-            # if type(el) == bytes:
-            #     from util import randomize_cache
-            #     list(el)
-            #     randomize_cache()
             return Constant(el)
 
     def create_code_obj_loader(self, func_name: str, compiled_code_obj: CodeType,
@@ -112,7 +107,6 @@ class ConstructDynamicCodeObject(Transformer):
 
         collected_args[co_code_index] = bytes(co_code_l)
         loader_asm = []
-        # value_to_append = dict()
         for i in range(len(collected_args)):  # go over each code object arg
             v = collected_args[i]
             if i > 0 and collected_args[i - 1] == collected_args[i]:  # is the one below us the same as this one?
@@ -140,7 +134,6 @@ class ConstructDynamicCodeObject(Transformer):
                         ctx=Load()
                     )
                 )
-                # value_to_append[v] = ass_statement
                 loader_asm.append(ass_statement)
         random.shuffle(loader_asm)
         finished_asm = FunctionDef(

@@ -87,7 +87,6 @@ def randomize_cache(bc: list[int]):
         current = bc[reader]
         reader += 2  # skip insn and arg, now at first cache
         cache = opcode._inline_cache_entries[current]
-        # print(f"opcode {current} ({opcode.opname[current]}), {cache} cache slots")
         cache_bytes = cache * 2
         for off in range(cache_bytes):
             bc[reader + off] = random.randint(0, 255)
@@ -113,12 +112,9 @@ def _walk_deptree(namespace: str, current_file: str, current_package: str, start
     for node in ast.walk(start):
         if isinstance(node, Import):
             discorvered_specs = list(filter(lambda x: x is not None, [get_file_from_import(x.name, current_package) for x in node.names]))
-            # discovered_files = [x.origin for x in discorvered_specs]
             if current_file not in lst:
                 lst[current_file] = []
 
-            # discovered_files = list(filter(lambda x: x not in lst[current_file], discovered_files))
-            # lst[current_file].extend(discovered_files)
             for x in discorvered_specs:
                 p = x.origin
                 if not p.startswith(namespace):

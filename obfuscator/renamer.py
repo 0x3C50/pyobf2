@@ -139,7 +139,6 @@ class MappingGenerator(NodeVisitor):
         if name != "self":  # maybe dont remap this one
             nn = self.mapping_name("arg")
             self.put_name_if_absent(name, nn)
-        # self.generic_visit(node)
 
     def visit_Lambda(self, node: Lambda) -> Any:
         self.start_visit("mt_<lambda>")
@@ -157,11 +156,6 @@ class MappingGenerator(NodeVisitor):
         self.start_visit("sp_lc")
         self.generic_visit(node)
         self.end_visit()
-
-    # def visit_Expr(self, node: Expr) -> Any:
-    #     self.start_visit("sp_expr")
-    #     self.generic_visit(node)
-    #     self.end_visit()
 
     def visit_Name(self, node: Name) -> Any:
         if isinstance(node.ctx, Store):
@@ -227,10 +221,6 @@ class OtherFileMappingApplicator(NodeVisitor):
                 x.name = self._map_name(x.name)
 
     def _import_matches(self, import_name: str) -> bool:
-        # if import_name.startswith(".") and not import_name.startswith(".."):
-        #     import_name = import_name[1:]
-        # elif import_name.startswith(".."):
-        #     import_name = import_name[2:]
         return import_name in self.owning_modules
 
     def visit_Import(self, node: Import) -> Any:
@@ -243,9 +233,7 @@ class OtherFileMappingApplicator(NodeVisitor):
 
     def visit_Attribute(self, node: Attribute) -> Any:
         attr_parts = self._get_attr_parts(node)
-        # print(attr_parts)
         if attr_parts is None:
-            # self.generic_visit(node)
             return
         matched_name = []
         for n in self.names_containing_module:
@@ -277,7 +265,6 @@ class OtherFileMappingApplicator(NodeVisitor):
                     )
             node.value = built_attribute.value
             node.attr = built_attribute.attr
-        # self.generic_visit(node)
 
     def visit_Assign(self, node: Assign) -> Any:
         """

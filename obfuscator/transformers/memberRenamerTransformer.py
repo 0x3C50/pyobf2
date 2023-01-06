@@ -26,7 +26,6 @@ class MemberRenamer(Transformer):
             for x in generator.mappings.keys():
                 n = x.split(".")
                 if n[0] == "":
-                    # self.console.log(current_file_name, n)
                     mappings1[n[1]] = generator.mappings[x]
             for i in range(len(all_asts)):
                 that_ast = all_asts[i]

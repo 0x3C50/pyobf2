@@ -44,7 +44,6 @@ class FstringsToFormatSequence(Transformer, NodeTransformer):
             args=collected_args,
             keywords=[]
         )
-        # return self.generic_visit(node)
 
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
         return self.visit(ast)
