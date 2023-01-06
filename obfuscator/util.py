@@ -1,4 +1,5 @@
 import ast
+import importlib.util
 import opcode
 import os.path
 import random
@@ -93,53 +94,65 @@ def randomize_cache(bc: list[int]):
         reader += cache_bytes
 
 
-def get_file_from_import(from_file: str, name: str):
-    if name.startswith(".."):
-        pname = os.path.normpath(os.path.join(os.path.dirname(from_file), ".."))
-        from_file = os.path.join(pname, os.path.basename(from_file))
-        name = name[2:]
-    elif name.startswith("."):
-        name = name[1:]
-    if "." in name:
-        paths = name.split(".")
-        name = os.path.join(*paths)
-    abspath_name = os.path.join(os.path.dirname(from_file), name) if len(name) > 0 else os.path.dirname(from_file)
-    if os.path.exists(abspath_name):
-        if os.path.isdir(abspath_name):  # is it a package? get __init__.py
-            return os.path.join(os.path.dirname(from_file), name, "__init__.py")
-    elif os.path.exists(abspath_name + ".py"):
-        return os.path.join(os.path.dirname(from_file), name + ".py")
+def get_file_from_import(name: str, modu: str):
+    try:
+        sp = importlib.util.find_spec(name, modu)
+        if sp is None or sp.origin is None:
+            return None
+        return sp
+    except:
+        return None
 
 
-def _walk_deptree(current_file: str, start: AST, lst: dict[str, list[str]]):
+path_blacklist = ["site-packages"]
+
+
+def _walk_deptree(namespace: str, current_file: str, current_package: str, start: AST, lst: dict[str, list[str]]):
     if current_file in lst:
         return  # already visited
     for node in ast.walk(start):
         if isinstance(node, Import):
-            discovered_files = list(filter(lambda x: x is not None, [get_file_from_import(current_file, x.name) for x in node.names]))
+            discorvered_specs = list(filter(lambda x: x is not None, [get_file_from_import(x.name, current_package) for x in node.names]))
+            # discovered_files = [x.origin for x in discorvered_specs]
             if current_file not in lst:
                 lst[current_file] = []
 
-            discovered_files = list(filter(lambda x: x not in lst[current_file], discovered_files))
-            lst[current_file].extend(discovered_files)
-            for x in discovered_files:
-                with open(x, "r", encoding="utf8") as f:
-                    _walk_deptree(x, ast.parse(f.read()), lst)
+            # discovered_files = list(filter(lambda x: x not in lst[current_file], discovered_files))
+            # lst[current_file].extend(discovered_files)
+            for x in discorvered_specs:
+                p = x.origin
+                if not p.startswith(namespace):
+                    continue  # unwanted
+                sep_split = p.split(os.path.sep)
+                if any([x in path_blacklist for x in sep_split]):
+                    continue  # also unwanted
+                lst[current_file].append(p)
+                with open(p, "r", encoding="utf8") as f:
+                    _walk_deptree(namespace, p, x.parent, ast.parse(f.read()), lst)
         if isinstance(node, ImportFrom):
             modu = node.module
-            discovered_file = get_file_from_import(current_file, modu)
-            if discovered_file is not None:
+            if modu is None:
+                modu = ""
+            modu = "." * node.level + modu
+            discovered_spec = get_file_from_import(modu, current_package)
+            if discovered_spec is not None:
+                discovered_file = discovered_spec.origin
+                if not discovered_file.startswith(namespace):
+                    continue  # unwanted
+                sep_split = discovered_file.split(os.path.sep)
+                if any([x in path_blacklist for x in sep_split]):
+                    continue  # also unwanted
                 if current_file not in lst:
                     lst[current_file] = []
                 if discovered_file in lst[current_file]:
                     continue
                 lst[current_file].append(discovered_file)
                 with open(discovered_file, "r", encoding="utf8") as f:
-                    _walk_deptree(discovered_file, ast.parse(f.read()), lst)
+                    _walk_deptree(namespace, discovered_file, discovered_spec.parent, ast.parse(f.read()), lst)
 
 
 def get_dependency_tree(start: str):
     resolved_files = {}
     with open(start, "r", encoding="utf8") as f:
-        _walk_deptree(os.path.abspath(start), ast.parse(f.read()), resolved_files)
+        _walk_deptree(os.path.dirname(os.path.abspath(start)), os.path.abspath(start), "", ast.parse(f.read()), resolved_files)
     return resolved_files

@@ -1,6 +1,7 @@
 import ast
 import math
 import os.path
+import sys
 from ast import *
 from pathlib import Path
 
@@ -23,7 +24,10 @@ from obfuscator.transformers.removeTypeHintsTransformer import RemoveTypeHints
 from obfuscator.transformers.replaceAttribsTransformer import ReplaceAttribs
 from obfuscator.util import NonEscapingUnparser, get_dependency_tree
 
+# sys.setrecursionlimit(1 << 30)
+
 colorama.init()
+
 
 console = Console()
 
