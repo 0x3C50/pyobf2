@@ -1,8 +1,8 @@
 import ast
 import math
 import os.path
-import time as tme
 from ast import *
+from pathlib import Path
 
 import colorama
 import rich.tree
@@ -18,6 +18,7 @@ from obfuscator.transformers.encodeStringsTransformer import EncodeStrings
 from obfuscator.transformers.fstrToFormatTransformer import FstringsToFormatSequence
 from obfuscator.transformers.intObfuscatorTransformer import IntObfuscator
 from obfuscator.transformers.memberRenamerTransformer import MemberRenamer
+from obfuscator.transformers.packPyz import PackInPyz
 from obfuscator.transformers.removeTypeHintsTransformer import RemoveTypeHints
 from obfuscator.transformers.replaceAttribsTransformer import ReplaceAttribs
 from obfuscator.util import NonEscapingUnparser, get_dependency_tree
@@ -52,6 +53,7 @@ all_transformers = [
         ReplaceAttribs,
         ConstructDynamicCodeObject,
         Collector,
+        PackInPyz
     ]
 ]
 
@@ -118,43 +120,6 @@ def main():
         go_transitive()
     else:
         go_single()
-
-
-def transform_source(c_ast: AST, source_file_name: str) -> AST:
-    transformers_to_run = list(
-        filter(lambda x: x.config["enabled"].value, all_transformers)
-    )
-    if len(transformers_to_run) == 0:
-        console.log("Nothing to do, bailing out", style="red")
-        exit(0)
-    for t in track(transformers_to_run, description="Obfuscating...", console=console):
-        c_ast = t.transform(c_ast, source_file_name, None, None)  # just this one
-        console.log(f"Executed transformer {t.name}", style="green")
-    fix_missing_locations(c_ast)
-    return c_ast
-
-
-def do_obf(task: rich.progress.TaskID, progress: rich.progress.Progress, current_file_path, all_asts, the_index, other_file_paths):
-    try:
-        transformers_to_run = list(
-            filter(lambda x: x.config["enabled"].value, all_transformers)
-        )
-        completed = -1
-        progress.update(task, total=len(transformers_to_run) + 1)  # transform+1
-        progress.start_task(task)
-        progress.update(task, completed=(completed := completed + 1), description="Running transformers")
-        if len(transformers_to_run) == 0:
-            console.log("Nothing to do, bailing out", style="red")
-            exit(0)
-        for t in transformers_to_run:
-            progress.update(task, completed=(completed := completed + 1), description="Transformer " + t.name)
-            all_asts[the_index] = t.transform(all_asts[the_index], current_file_path, all_asts, other_file_paths)
-            tme.sleep(5)
-        all_asts[the_index] = fix_missing_locations(all_asts[the_index])
-        progress.update(task, completed=(completed := completed + 1), description="Done")
-        return all_asts[the_index]
-    except Exception:
-        console.print_exception(show_locals=True)
 
 
 def resolve_file_spec(fspec: str) -> list[str]:
@@ -232,9 +197,8 @@ def go_transitive():
         except ValueError as e:
             console.log(e, style="red")
             exit(1)
-        # if not os.path.exists(x) or not os.path.isfile(x):
-        #     console.log(f"Invalid / nonexistant file {x}, cannot continue", style="red")
-        #     exit(1)
+
+    all_files = list(dict.fromkeys(all_files))  # remove dupes
     common_prefix_l = len(os.path.commonpath(list(map(lambda x: os.path.dirname(x) + "/", all_files)))) + 1
     progress = rich.progress.Progress(
         rich.progress.TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
@@ -303,6 +267,10 @@ def go_transitive():
         with open(full_path, "w", encoding="utf8") as f:
             f.write(src)
             f.flush()
+    console.log("Doing post run")
+    all_outs = [Path(os.path.join(output_file, x[common_prefix_l:])) for x in all_files]
+    for trafo in transformers_to_run:
+        trafo.transform_output(Path(output_file), all_outs)
     console.log("Done", style="green")
 
 
@@ -323,6 +291,12 @@ def go_single():
             "does not exist",
             style="red",
         )
+        exit(1)
+    transformers_to_run = list(
+        filter(lambda x: x.config["enabled"].value, all_transformers)
+    )
+    if len(transformers_to_run) == 0:
+        console.log("Nothing to do, exiting", style="red")
         exit(1)
     if os.path.exists(output_file) and os.path.isdir(
             output_file
@@ -349,7 +323,11 @@ def go_single():
         inp_source = f.read()
     console.log("Parsing AST...", style="#4f4f4f")
     compiled_ast: AST = ast.parse(inp_source)
-    compiled_ast = transform_source(compiled_ast, os.path.abspath(input_file))
+    absolute_input_file = os.path.abspath(input_file)
+    console.log("Obfuscating...")
+    for t in track(transformers_to_run, description="Obfuscating...", console=console):
+        compiled_ast = t.transform(compiled_ast, absolute_input_file, None, None)
+    fix_missing_locations(compiled_ast)
     console.log("Re-structuring source...", style="#4f4f4f")
     try:
         src = NonEscapingUnparser().visit(compiled_ast)
@@ -365,4 +343,9 @@ def go_single():
     console.log("Writing...", style="#4f4f4f")
     with open(output_file, "w", encoding="utf8") as f:
         f.write(src)
+    console.log("Doing post run...")
+    out_file_path = Path(output_file)
+    for t in track(transformers_to_run, description="Post run...", console=console):
+        t.transform_output(out_file_path.parent, [out_file_path])
+        # compiled_ast = t.transform(compiled_ast, absolute_input_file, None, None)  # just this one
     console.log("Done", style="green")

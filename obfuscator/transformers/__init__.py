@@ -1,5 +1,6 @@
 import ast
 import os.path
+import pathlib
 import random
 from ast import *
 
@@ -16,6 +17,9 @@ class Transformer(object):
                                     enabled=ConfigValue("Enables this transformer", default_enabled),
                                     **add_config)
         self.console: rich.Console = None
+
+    def transform_output(self, output_location: pathlib.Path, all_files: list[pathlib.Path]):
+        pass
 
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
         return ast
