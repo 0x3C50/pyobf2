@@ -1,4 +1,5 @@
 import ast
+import dataclasses
 import importlib.util
 import opcode
 import os.path
@@ -93,26 +94,75 @@ def randomize_cache(bc: list[int]):
         reader += cache_bytes
 
 
-def get_file_from_import(name: str, modu: str):
+def get_file_from_import0(name: str, parent: str, path: list[str]):
+    """
+    debug version
+    """
+    print(parent, name, end="", flush=True)
+    gfi = get_file_from_import(name, parent, path)
+    print(" ->" + str(gfi))
+    return gfi
+
+
+@dataclasses.dataclass
+class Imported:
+    origin: str
+    parent: str
+
+
+def get_file_from_import(name: str, parent: str, path: list[str]):
     try:
-        sp = importlib.util.find_spec(name, modu)
-        if sp is None or sp.origin is None:
-            return None
-        return sp
-    except Exception as e:
+        resname = importlib.util.resolve_name(name, parent)
+        searchfor = resname.split(".")
+        for p in path:
+            current_path = p
+            visited_path = []
+            for x in searchfor:
+                visited_path.append(x)
+                current_path = os.path.join(current_path, x)
+                if os.path.isdir(current_path):  # this segment points to a folder, continue
+                    continue
+                elif os.path.isfile(current_path + ".py"):  # we reached an end, the rest is speculation
+                    return Imported(current_path + ".py", ".".join(visited_path[:-1]))
+                else:  # this doesn't exist as a file
+                    prevpath = os.path.dirname(current_path)  # this is, based on previous checks, a directory
+                    if os.path.isfile(
+                        os.path.join(prevpath, "__init__.py")
+                    ):  # dir above has __init__, assume we're inside of it
+                        return Imported(os.path.join(prevpath, "__init__.py"), ".".join(visited_path[:-1]))
+                    return None  # dir above has no __init__, this one is bogus
+            if os.path.isdir(current_path):  # this is a directory, do we have an __init__?
+                if os.path.isfile(os.path.join(current_path, "__init__.py")):
+                    # we do, but in this case, the module is its own parent
+                    return Imported(os.path.join(current_path, "__init__.py"), ".".join(searchfor))
+                else:
+                    return None  # points to a folder, no __init__, cant import
         return None
+    except Exception as e:
+        raise e
 
 
 path_blacklist = ["site-packages"]
 
 
-def _walk_deptree(namespace: str, current_file: str, current_package: str, start: AST, lst: dict[str, list[str]]):
+def _walk_deptree(
+    namespace: str,
+    current_file: str,
+    current_package: str,
+    search_path: list[str],
+    start: AST,
+    lst: dict[str, list[str]],
+):
+    print("-- FILE " + current_file + " --")
     if current_file in lst:
         return  # already visited
     for node in ast.walk(start):
         if isinstance(node, Import):
             discorvered_specs = list(
-                filter(lambda x: x is not None, [get_file_from_import(x.name, current_package) for x in node.names])
+                filter(
+                    lambda x: x is not None,
+                    [get_file_from_import(x.name, current_package, search_path) for x in node.names],
+                )
             )
             if current_file not in lst:
                 lst[current_file] = []
@@ -126,13 +176,13 @@ def _walk_deptree(namespace: str, current_file: str, current_package: str, start
                     continue  # also unwanted
                 lst[current_file].append(p)
                 with open(p, "r", encoding="utf8") as f:
-                    _walk_deptree(namespace, p, x.parent, ast.parse(f.read()), lst)
+                    _walk_deptree(namespace, p, x.parent, search_path, ast.parse(f.read()), lst)
         if isinstance(node, ImportFrom):
             modu = node.module
             if modu is None:
                 modu = ""
             modu = "." * node.level + modu
-            discovered_spec = get_file_from_import(modu, current_package)
+            discovered_spec = get_file_from_import(modu, current_package, search_path)
             if discovered_spec is not None:
                 discovered_file = discovered_spec.origin
                 if not discovered_file.startswith(namespace):
@@ -146,17 +196,17 @@ def _walk_deptree(namespace: str, current_file: str, current_package: str, start
                     continue
                 lst[current_file].append(discovered_file)
                 with open(discovered_file, "r", encoding="utf8") as f:
-                    _walk_deptree(namespace, discovered_file, discovered_spec.parent, ast.parse(f.read()), lst)
+                    _walk_deptree(
+                        namespace, discovered_file, discovered_spec.parent, search_path, ast.parse(f.read()), lst
+                    )
 
 
 def get_dependency_tree(start: str):
     resolved_files = {}
-    previous_path = sys.path
     ns = os.path.dirname(os.path.abspath(start))
-    sys.path.insert(0, ns)
+    path = [ns]
     with open(start, "r", encoding="utf8") as f:
-        _walk_deptree(ns, os.path.abspath(start), "", ast.parse(f.read()), resolved_files)
-    sys.path = previous_path
+        _walk_deptree(ns, os.path.abspath(start), "", path, ast.parse(f.read()), resolved_files)
     return resolved_files
 
 
