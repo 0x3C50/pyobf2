@@ -13,6 +13,7 @@ from tomlkit import *
 
 from obfuscator.cfg import *
 from obfuscator.transformers.collector import Collector
+from obfuscator.transformers.compileFinalFiles import CompileFinalFiles
 from obfuscator.transformers.constructDynamicCodeObjTransformer import ConstructDynamicCodeObject
 from obfuscator.transformers.encodeStringsTransformer import EncodeStrings
 from obfuscator.transformers.fstrToFormatTransformer import FstringsToFormatSequence
@@ -21,7 +22,6 @@ from obfuscator.transformers.memberRenamerTransformer import MemberRenamer
 from obfuscator.transformers.packPyz import PackInPyz
 from obfuscator.transformers.removeTypeHintsTransformer import RemoveTypeHints
 from obfuscator.transformers.replaceAttribsTransformer import ReplaceAttribs
-from obfuscator.transformers.compileFinalFiles import CompileFinalFiles
 from obfuscator.util import NonEscapingUnparser, get_dependency_tree
 
 colorama.init()
@@ -36,9 +36,12 @@ general_settings = ConfigSegment(
     input_file=ConfigValue("The input for the obfuscator", "input.py"),
     output_file=ConfigValue("The output for the obfuscator", "output.py"),
     transitive=ConfigValue("Resolves local imports from the target file and obfuscates them aswell", True),
-    manual_include=ConfigValue("Manually includes these files in transitive mode, if the automatic import resolver doesn't find them", []),
-    overwrite_output_forcefully=ConfigValue("Skips the existance check of the output file. This WILL nuke the output file if it already exists",
-                                            False)
+    manual_include=ConfigValue(
+        "Manually includes these files in transitive mode, if the automatic import resolver doesn't find them", []
+    ),
+    overwrite_output_forcefully=ConfigValue(
+        "Skips the existance check of the output file. This WILL nuke the output file if it already exists", False
+    ),
 )
 
 all_config_segments = [general_settings]
@@ -55,7 +58,7 @@ all_transformers = [
         ConstructDynamicCodeObject,
         Collector,
         CompileFinalFiles,
-        PackInPyz
+        PackInPyz,
     ]
 ]
 
@@ -97,9 +100,7 @@ def parse_config(cfg: TOMLDocument):
 
 def main():
     if not os.path.exists(config_file):
-        console.log(
-            "Configuration file does not exist, creating example...", style="red"
-        )
+        console.log("Configuration file does not exist, creating example...", style="red")
         example_cfg = generate_example_config()
         st = dumps(example_cfg)
         with open(config_file, "w") as f:
@@ -135,6 +136,7 @@ def resolve_file_spec(fspec: str) -> list[str]:
         if not os.path.isdir(prefix):
             raise ValueError(f"Invalid file specifier {fspec}, ** prefix {prefix} is not a directory or doesn't exist")
         from pathlib import Path
+
         all_pys = list(Path(prefix).rglob("*.[pP][yY]"))
         return [str(x.absolute()) for x in all_pys]
     elif "*" in fspec:
@@ -147,6 +149,7 @@ def resolve_file_spec(fspec: str) -> list[str]:
         if not os.path.isdir(prefix):
             raise ValueError(f"Invalid file specifier {fspec}, * prefix {prefix} is not a directory or doesn't exist")
         from pathlib import Path
+
         all_pys = list(Path(prefix).glob("*.[pP][yY]"))
         return [str(x.absolute()) for x in all_pys]
     else:
@@ -175,14 +178,13 @@ def go_transitive():
     console.log("Parsing inheritance tree...", style="#4f4f4f")
     deptree = get_dependency_tree(input_file)
     if len(deptree) == 0:
-        console.log("Transitive run with no dependencies, aborting\nSet transitive to false in your config.toml if you have only one file",
-                    style="red")
+        console.log(
+            "Transitive run with no dependencies, aborting\nSet transitive to false in your config.toml if you have only one file",
+            style="red",
+        )
         exit(1)
     common_prefix_l = len(os.path.commonpath(list(map(lambda x: os.path.dirname(x) + "/", deptree.keys())))) + 1
-    tree = rich.tree.Tree(
-        os.path.abspath(input_file)[common_prefix_l:],
-        style="green"
-    )
+    tree = rich.tree.Tree(os.path.abspath(input_file)[common_prefix_l:], style="green")
     recurse_tree_inner(deptree, deptree[os.path.abspath(input_file)], common_prefix_l, tree)
     console.log(tree)
     all_files = []
@@ -208,7 +210,7 @@ def go_transitive():
         "[progress.percentage]{task.percentage:>3.1f}%",
         "•",
         rich.progress.TextColumn("[#4f4f4f]{task.description:>32}", justify="right"),
-        console=console
+        console=console,
     )
     all_asts = []
     for x in all_files:
@@ -220,9 +222,7 @@ def go_transitive():
         task1 = progress.add_task("Waiting", start=False, filename=file[common_prefix_l:])
         all_tasks.append(task1)
 
-    transformers_to_run = list(
-        filter(lambda x: x.config["enabled"].value, all_transformers)
-    )
+    transformers_to_run = list(filter(lambda x: x.config["enabled"].value, all_transformers))
     if len(transformers_to_run) == 0:
         console.log("Nothing to do, bailing out", style="red")
         exit(0)
@@ -236,14 +236,18 @@ def go_transitive():
                 comp_i = progress._tasks[task].completed
                 if comp_i == 0:
                     progress.start_task(task)
-                progress.update(task, total=len(task_labels), completed=comp_i + 1, description=task_labels[math.floor(comp_i)])
+                progress.update(
+                    task, total=len(task_labels), completed=comp_i + 1, description=task_labels[math.floor(comp_i)]
+                )
                 all_asts[index] = fix_missing_locations(trafo.transform(all_asts[index], file, all_asts, all_files))
 
         for index in range(len(all_files)):
             task = all_tasks[index]
             progress.update(task, total=len(task_labels))
             comp_i = progress._tasks[task].completed
-            progress.update(task, total=len(task_labels), completed=comp_i + 1, description=task_labels[math.floor(comp_i)])
+            progress.update(
+                task, total=len(task_labels), completed=comp_i + 1, description=task_labels[math.floor(comp_i)]
+            )
 
     console.log("Writing")
     for i in range(len(all_files)):
@@ -294,15 +298,11 @@ def go_single():
             style="red",
         )
         exit(1)
-    transformers_to_run = list(
-        filter(lambda x: x.config["enabled"].value, all_transformers)
-    )
+    transformers_to_run = list(filter(lambda x: x.config["enabled"].value, all_transformers))
     if len(transformers_to_run) == 0:
         console.log("Nothing to do, exiting", style="red")
         exit(1)
-    if os.path.exists(output_file) and os.path.isdir(
-            output_file
-    ):  # output "file" is a dir
+    if os.path.exists(output_file) and os.path.isdir(output_file):  # output "file" is a dir
         base = os.path.basename(input_file)  # so append the input file name to it
         output_file = os.path.join(output_file, base)
     if os.path.exists(output_file) and not general_settings["overwrite_output_forcefully"].value:
@@ -316,9 +316,7 @@ def go_single():
         base1 = ".".join(base1.split(".")[0:-1]) if base1.endswith(".py") else base1
         attempts = 0
         while os.path.exists(output_file):
-            output_file = os.path.join(
-                os.path.dirname(output_file), f"{base1}_{attempts}.py"
-            )
+            output_file = os.path.join(os.path.dirname(output_file), f"{base1}_{attempts}.py")
             attempts += 1
         console.log("Found one:", output_file, style="green")
     with open(input_file, "r", encoding="utf8") as f:

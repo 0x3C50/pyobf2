@@ -13,9 +13,9 @@ from ..renamer import MappingGenerator, MappingApplicator
 class Transformer(object):
     def __init__(self, name: str, desc: str, default_enabled: bool = False, **add_config: ConfigValue):
         self.name = name
-        self.config = ConfigSegment(self.name, desc,
-                                    enabled=ConfigValue("Enables this transformer", default_enabled),
-                                    **add_config)
+        self.config = ConfigSegment(
+            self.name, desc, enabled=ConfigValue("Enables this transformer", default_enabled), **add_config
+        )
         self.console: rich.Console = None
 
     def transform_output(self, output_location: pathlib.Path, all_files: list[pathlib.Path]) -> list[pathlib.Path]:
@@ -26,14 +26,9 @@ class Transformer(object):
 
 
 def compute_import_path(from_path: str, to_path: str):
-    common_prefix = len(os.path.commonpath(
-        [
-            os.path.dirname(from_path),
-            os.path.dirname(to_path)
-        ]
-    ))
-    from_path = from_path[common_prefix + 1:].split(os.path.sep)
-    to_path = to_path[common_prefix + 1:].split(os.path.sep)
+    common_prefix = len(os.path.commonpath([os.path.dirname(from_path), os.path.dirname(to_path)]))
+    from_path = from_path[common_prefix + 1 :].split(os.path.sep)
+    to_path = to_path[common_prefix + 1 :].split(os.path.sep)
 
     full_imp = ""
     while len(from_path) > 1:
@@ -87,16 +82,8 @@ def clear_docstring(node):
 
 
 def ast_import_from(name: str, *names) -> ImportFrom:
-    return ImportFrom(
-        module=name,
-        names=[alias(name=x) for x in names],
-        level=0
-    )
+    return ImportFrom(module=name, names=[alias(name=x) for x in names], level=0)
 
 
 def ast_import_full(name: str) -> Call:
-    return Call(
-        func=Name('__import__', Load()),
-        args=[Constant(name)],
-        keywords=[]
-    )
+    return Call(func=Name("__import__", Load()), args=[Constant(name)], keywords=[])

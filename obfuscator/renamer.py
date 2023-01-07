@@ -19,7 +19,7 @@ class MappingGenerator(NodeVisitor):
         for x in sorted_names:
             s_loc = x.split(".")[1]
             location_split = s_loc.split("|")
-            if len(location_split) == 1 and location_split[0] == '':
+            if len(location_split) == 1 and location_split[0] == "":
                 location_split = []
             loc_matches = True
             if len(self.location_stack) >= len(location_split):
@@ -44,11 +44,9 @@ class MappingGenerator(NodeVisitor):
 
     def mapping_name(self, for_type: str):
         fmt = self.fmt
-        generated_name = eval(fmt, {
-            "counter": self.counter_shit("cnt"),
-            "kind": for_type,
-            "get_counter": self.counter_shit
-        })
+        generated_name = eval(
+            fmt, {"counter": self.counter_shit("cnt"), "kind": for_type, "get_counter": self.counter_shit}
+        )
         if type(generated_name) != str:
             generated_name = str(generated_name)
         return generated_name
@@ -160,7 +158,9 @@ class MappingGenerator(NodeVisitor):
     def visit_Name(self, node: Name) -> Any:
         if isinstance(node.ctx, Store):
             if node.id != "self":
-                if len(self.location_stack) == 0 or not self.location_stack[len(self.location_stack) - 1].startswith("cl_"):
+                if len(self.location_stack) == 0 or not self.location_stack[len(self.location_stack) - 1].startswith(
+                    "cl_"
+                ):
                     self.put_name_if_absent(node.id, self.mapping_name("var"))
         self.generic_visit(node)
 
@@ -179,8 +179,11 @@ class OtherFileMappingApplicator(NodeVisitor):
         self.names_containing_module = []
 
     def _resolve_attr(self, node: Attribute) -> str | None:
-        first_part = self._resolve_attr(node.value) if isinstance(node.value, Attribute) else (
-            node.value.id if isinstance(node.value, Name) else None)
+        first_part = (
+            self._resolve_attr(node.value)
+            if isinstance(node.value, Attribute)
+            else (node.value.id if isinstance(node.value, Name) else None)
+        )
         second_part = node.attr
         if first_part is None:
             return None
@@ -212,9 +215,7 @@ class OtherFileMappingApplicator(NodeVisitor):
         resolved_mod = "." * node.level + resolved_mod
         if self._import_matches(resolved_mod):
             if len(node.names) == 1 and node.names[0].name == "*":  # why the fuck
-                node.names = [
-                    alias(name=self._map_name(x), asname=x) for x in self.all_els
-                ]
+                node.names = [alias(name=self._map_name(x), asname=x) for x in self.all_els]
             for x in node.names:
                 if x.asname is None:
                     x.asname = x.name
@@ -245,24 +246,16 @@ class OtherFileMappingApplicator(NodeVisitor):
                         matches_verdict = False
             if matches_verdict:
                 matched_name = attr_res
-                attr_parts = attr_parts[len(attr_res):]
+                attr_parts = attr_parts[len(attr_res) :]
                 break
 
         if len(matched_name) > 0 and len(attr_parts) > 0:
             remapped_names = [*matched_name, self._map_name(attr_parts[0])]
             remapped_names.extend(attr_parts[1:])
-            built_attribute = Attribute(
-                value=Name(remapped_names[0], Load()),
-                attr=remapped_names[1],
-                ctx=Load()
-            )
+            built_attribute = Attribute(value=Name(remapped_names[0], Load()), attr=remapped_names[1], ctx=Load())
             if len(remapped_names) > 2:
                 for x in remapped_names[2:]:
-                    built_attribute = Attribute(
-                        value=built_attribute,
-                        attr=x,
-                        ctx=Load()
-                    )
+                    built_attribute = Attribute(value=built_attribute, attr=x, ctx=Load())
             node.value = built_attribute.value
             node.attr = built_attribute.attr
 
@@ -270,17 +263,25 @@ class OtherFileMappingApplicator(NodeVisitor):
         """
         jesus fucking christ
         """
-        if isinstance(node.value, Call) and isinstance(node.value.func, Name) and node.value.func.id == "__import__" and len(node.value.args) > 0 \
-                and isinstance(node.value.args[0], Constant) and node.value.args[0].value in self.owning_modules:  # aka __import__("our module name")
+        if (
+            isinstance(node.value, Call)
+            and isinstance(node.value.func, Name)
+            and node.value.func.id == "__import__"
+            and len(node.value.args) > 0
+            and isinstance(node.value.args[0], Constant)
+            and node.value.args[0].value in self.owning_modules
+        ):  # aka __import__("our module name")
             for x in node.targets:
                 name = self._resolve_attr(x) if isinstance(x, Attribute) else (x.id if isinstance(x, Name) else None)
                 if name is None:
                     continue
                 if name not in self.names_containing_module:
                     self.names_containing_module.append(name)
-        elif (isinstance(node.value, Attribute) or isinstance(node.value, Name)) and \
-                (self._resolve_attr(node.value) if isinstance(node.value, Attribute) else (node.value.id if isinstance(node.value, Name) else None)) \
-                in self.names_containing_module:  # aka something = something_that_we_know_is_our_module
+        elif (isinstance(node.value, Attribute) or isinstance(node.value, Name)) and (
+            self._resolve_attr(node.value)
+            if isinstance(node.value, Attribute)
+            else (node.value.id if isinstance(node.value, Name) else None)
+        ) in self.names_containing_module:  # aka something = something_that_we_know_is_our_module
             for x in node.targets:
                 name2 = self._resolve_attr(x) if isinstance(x, Attribute) else (x.id if isinstance(x, Name) else None)
                 if name2 is None:
@@ -288,7 +289,11 @@ class OtherFileMappingApplicator(NodeVisitor):
                 if name2 not in self.names_containing_module:
                     self.names_containing_module.append(name2)
         else:
-            for x in node.targets:  # we know these are being assigned something else, so remove them from the names we know are the module
+            for (
+                x
+            ) in (
+                node.targets
+            ):  # we know these are being assigned something else, so remove them from the names we know are the module
                 name2 = self._resolve_attr(x) if isinstance(x, Attribute) else (x.id if isinstance(x, Name) else None)
                 if name2 is None:
                     continue
@@ -319,7 +324,7 @@ class MappingApplicator(NodeVisitor):
         for x in sorted_names:
             s_loc = x.split(".")[0]
             location_split = s_loc.split("|")
-            if len(location_split) == 1 and location_split[0] == '':
+            if len(location_split) == 1 and location_split[0] == "":
                 location_split = []
             loc_matches = True
             if len(self.location_stack) >= len(location_split):

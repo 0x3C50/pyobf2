@@ -20,9 +20,7 @@ class NonEscapingUnparser(getattr(ast, "_Unparser")):
     """
 
     # noinspection PyMethodMayBeStatic
-    def _str_literal_helper(
-            self, string, *, quote_types=_ALL_QUOTES, escape_special_whitespace=False
-    ):
+    def _str_literal_helper(self, string, *, quote_types=_ALL_QUOTES, escape_special_whitespace=False):
         """Helper for writing string literals, minimizing escapes.
         Returns the tuple (string literal to write, possible quote types).
         """
@@ -113,7 +111,9 @@ def _walk_deptree(namespace: str, current_file: str, current_package: str, start
         return  # already visited
     for node in ast.walk(start):
         if isinstance(node, Import):
-            discorvered_specs = list(filter(lambda x: x is not None, [get_file_from_import(x.name, current_package) for x in node.names]))
+            discorvered_specs = list(
+                filter(lambda x: x is not None, [get_file_from_import(x.name, current_package) for x in node.names])
+            )
             if current_file not in lst:
                 lst[current_file] = []
 

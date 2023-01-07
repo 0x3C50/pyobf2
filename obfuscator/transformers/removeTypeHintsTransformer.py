@@ -18,10 +18,7 @@ class RemoveTypeHints(Transformer, NodeTransformer):
         return self.generic_visit(node)
 
     def visit_AnnAssign(self, node: AnnAssign) -> Any:
-        a = Assign(
-            targets=[node.target],
-            value=node.value
-        )
+        a = Assign(targets=[node.target], value=node.value)
         return self.generic_visit(a)
 
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:

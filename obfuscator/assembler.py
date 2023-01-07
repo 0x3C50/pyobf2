@@ -11,11 +11,11 @@ class _insn:
 
     def to_bc_seq(self):
         bl = self.arg.bit_length()
-        if bl > 4*8:
+        if bl > 4 * 8:
             raise ValueError(f"Arg {self.arg} is too big to pack into 4 bytes")
-        arg_bytes = self.arg.to_bytes(math.ceil(bl/8), "big", signed=False)
+        arg_bytes = self.arg.to_bytes(math.ceil(bl / 8), "big", signed=False)
         if len(arg_bytes) == 0:
-            arg_bytes = b'\x00'
+            arg_bytes = b"\x00"
         constructed = []
         if len(arg_bytes) > 1:
             for x in arg_bytes[:-1]:
@@ -84,8 +84,10 @@ class Assembler:
             self.lasti = is_lasti
 
         def to_bc_seq(self):
-            bc = b''
-            bc += _encode_varint(self.from_i // 2)  # since bytecode indexes are whole numbers, we can safely divide by 2 to "compress" the varints
+            bc = b""
+            bc += _encode_varint(
+                self.from_i // 2
+            )  # since bytecode indexes are whole numbers, we can safely divide by 2 to "compress" the varints
             bc += _encode_varint(self.len // 2)
             bc += _encode_varint(self.target // 2)
             bc += _encode_varint(self.depth << 1 | int(self.lasti))
@@ -182,8 +184,24 @@ class Assembler:
         Compiles this assembler into a code object
         :return: The constructed code object. Can be marshalled using marshal.dumps, or executed using eval() or exec()
         """
-        return CodeType(len(self._argnames), 0, 0, len(self._varnames), 30, 0, self._build_co_str(), tuple(self._consts), tuple(self._names),
-                        tuple(self._varnames), "<asm>", "", "", 0, b"", self._build_exc_table())
+        return CodeType(
+            len(self._argnames),
+            0,
+            0,
+            len(self._varnames),
+            30,
+            0,
+            self._build_co_str(),
+            tuple(self._consts),
+            tuple(self._names),
+            tuple(self._varnames),
+            "<asm>",
+            "",
+            "",
+            0,
+            b"",
+            self._build_exc_table(),
+        )
 
     def consts_create_or_get(self, value: Any) -> int:
         """

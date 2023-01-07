@@ -6,11 +6,7 @@ from . import Transformer, collect_fstring_consts
 
 
 class FstringsToFormatSequence(Transformer, NodeTransformer):
-    conversion_method_dict = {
-        's': "str",
-        'r': "repr",
-        'a': "ascii"
-    }
+    conversion_method_dict = {"s": "str", "r": "repr", "a": "ascii"}
 
     def __init__(self):
         super().__init__("fstrToFormatSeq", "Converts F-Strings to their str.format equivalent")
@@ -27,22 +23,14 @@ class FstringsToFormatSequence(Transformer, NodeTransformer):
                 loader_mth = value.value
                 if value.conversion != -1 and chr(value.conversion) in self.conversion_method_dict:
                     mth = self.conversion_method_dict[chr(value.conversion)]
-                    loader_mth = Call(
-                        func=Name(mth, Load()),
-                        args=[loader_mth],
-                        keywords=[]
-                    )
+                    loader_mth = Call(func=Name(mth, Load()), args=[loader_mth], keywords=[])
                 collected_args.append(loader_mth)
             elif isinstance(value, Constant):
                 converted_format += str(value.value)
         return Call(
-            func=Attribute(
-                value=Constant(converted_format),
-                attr="format",
-                ctx=Load()
-            ),
+            func=Attribute(value=Constant(converted_format), attr="format", ctx=Load()),
             args=collected_args,
-            keywords=[]
+            keywords=[],
         )
 
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:

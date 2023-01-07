@@ -22,9 +22,7 @@ class Collector(Transformer, NodeTransformer):
         if node.id == "super":  # this will fuck with class context so lets skip this one
             return self.generic_visit(node)
         return Subscript(
-            Name(self.vname, Load()),
-            Constant(b"\x00" + zlib.compress(node.id.encode("utf8"), level=9)),
-            Load()
+            Name(self.vname, Load()), Constant(b"\x00" + zlib.compress(node.id.encode("utf8"), level=9)), Load()
         )
 
     @staticmethod
@@ -44,6 +42,7 @@ class Collector(Transformer, NodeTransformer):
             import builtins as builtins1
             import sys as sys1
             from types import FrameType
+
             expr_to_eval = item
             codecs = codecs1.lookup("rot13")
             frame_above: FrameType = sys1._getframe(1)
@@ -73,7 +72,9 @@ class Collector(Transformer, NodeTransformer):
         getitem_ast = ast.parse(gs)
         getitem_ast = optimize_ast(getitem_ast)
         actual_co_obj = compile(getitem_ast, filename="", mode="exec", optimize=2)
-        the_method = actual_co_obj.co_consts[0]  # we have to do mental gymnastics here to get the actual method's code object back
+        the_method = actual_co_obj.co_consts[
+            0
+        ]  # we have to do mental gymnastics here to get the actual method's code object back
 
         class_ctor = Assembler([])
         class_ctor.insn("resume", 0)
@@ -113,30 +114,16 @@ class Collector(Transformer, NodeTransformer):
         co = self._create_co_obj()
         the_funny = marshal.dumps(co)
         return Assign(  # {vname} = eval(__import__("marshal").loads(the_funny))()
-            [
-                Name(self.vname, Store())
-            ],
+            [Name(self.vname, Store())],
             Call(
                 Call(
                     Name("eval", Load()),
-                    [
-                        Call(
-                            Attribute(
-                                ast_import_full("marshal"),
-                                "loads",
-                                Load()
-                            ),
-                            [
-                                Constant(the_funny)
-                            ],
-                            []
-                        )
-                    ],
-                    []
+                    [Call(Attribute(ast_import_full("marshal"), "loads", Load()), [Constant(the_funny)], [])],
+                    [],
                 ),
                 [],
-                []
-            )
+                [],
+            ),
         )
 
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:

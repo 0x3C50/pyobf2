@@ -48,42 +48,23 @@ class EncodeStrings(Transformer, NodeTransformer):
             compressed = None
         if compressed is not None:
             t = Call(
-                func=Attribute(
-                    value=ast_import_full("base64"),
-                    attr="b64decode",
-                    ctx=Load()
-                ),
+                func=Attribute(value=ast_import_full("base64"), attr="b64decode", ctx=Load()),
                 args=[
                     # We haven't compressed if we're in an fstr
                     Call(
-                        func=Attribute(
-                            value=ast_import_full("zlib"),
-                            attr="decompress",
-                            ctx=Load()
-                        ),
-                        args=[
-                            Constant(compressed)
-                        ],
-                        keywords=[]
-                    ) if not self.no_lzma else Constant(compressed)
+                        func=Attribute(value=ast_import_full("zlib"), attr="decompress", ctx=Load()),
+                        args=[Constant(compressed)],
+                        keywords=[],
+                    )
+                    if not self.no_lzma
+                    else Constant(compressed)
                 ],
-                keywords=[]
+                keywords=[],
             )
             if do_decode:
-                t = Call(
-                    func=Attribute(
-                        value=t,
-                        attr="decode",
-                        ctx=Load()
-                    ),
-                    args=[],
-                    keywords=[]
-                )
+                t = Call(func=Attribute(value=t, attr="decode", ctx=Load()), args=[], keywords=[])
             if self.in_formatted_str:
-                t = FormattedValue(
-                    value=t,
-                    conversion=-1
-                )
+                t = FormattedValue(value=t, conversion=-1)
             return t
         else:
             return self.generic_visit(node)

@@ -16,15 +16,7 @@ class ReplaceAttribs(Transformer, NodeTransformer):
                 parent = attrib.value
                 name = attrib.attr
                 value = node.value
-                return Expr(Call(
-                    func=Name('setattr', Load()),
-                    args=[
-                        parent,
-                        Constant(name),
-                        value
-                    ],
-                    keywords=[]
-                ))
+                return Expr(Call(func=Name("setattr", Load()), args=[parent, Constant(name), value], keywords=[]))
         return self.generic_visit(node)
 
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:

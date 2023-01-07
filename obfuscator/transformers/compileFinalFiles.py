@@ -1,18 +1,11 @@
-import dis
 import marshal
-import opcode
 import os.path
 import pathlib
-import random
-from types import CodeType
-
-from obfuscator.assembler import Assembler
-from obfuscator.cfg import ConfigValue
-from obfuscator.transformers import Transformer
-
 import struct
 import sys
+from types import CodeType
 
+from obfuscator.transformers import Transformer
 from obfuscator.util import strip_lnotab
 
 
@@ -74,7 +67,9 @@ class CompileFinalFiles(Transformer):
 
     def transform_output(self, output_location: pathlib.Path, all_files: list[pathlib.Path]):
         all_f_copy = all_files[:]
-        all_f_copy = list(map(lambda x: pathlib.Path(os.path.splitext(x)[0] + ".pyc") if x.is_file() else x, all_f_copy))
+        all_f_copy = list(
+            map(lambda x: pathlib.Path(os.path.splitext(x)[0] + ".pyc") if x.is_file() else x, all_f_copy)
+        )
         for x in all_files:
             if x.is_file():
                 do_compile(x)
