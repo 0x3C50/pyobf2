@@ -35,7 +35,7 @@ class UnicodeNameTransformer(Transformer, NodeVisitor):
     def __init__(self):
         super().__init__("unicodeTransformer", "Converts names to equally valid, but weird looking unicode names")
 
-    def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
+    def transform(self, ast: AST, current_file_name: str, all_asts, all_file_names) -> AST:
         self.visit(ast)
         return ast
 
