@@ -22,6 +22,7 @@ from obfuscator.transformers.memberRenamerTransformer import MemberRenamer
 from obfuscator.transformers.packPyz import PackInPyz
 from obfuscator.transformers.removeTypeHintsTransformer import RemoveTypeHints
 from obfuscator.transformers.replaceAttribsTransformer import ReplaceAttribs
+from obfuscator.transformers.unicodeNameTransformer import UnicodeNameTransformer
 from obfuscator.util import NonEscapingUnparser, get_dependency_tree
 
 colorama.init()
@@ -40,7 +41,7 @@ general_settings = ConfigSegment(
         "Manually includes these files in transitive mode, if the automatic import resolver doesn't find them", []
     ),
     overwrite_output_forcefully=ConfigValue(
-        "Skips the existance check of the output file. This WILL nuke the output file if it already exists", False
+        "Skips the existence check of the output file. This WILL nuke the output file if it already exists", False
     ),
 )
 
@@ -55,6 +56,7 @@ all_transformers = [
         EncodeStrings,
         MemberRenamer,
         ReplaceAttribs,
+        UnicodeNameTransformer,
         ConstructDynamicCodeObject,
         Collector,
         CompileFinalFiles,
@@ -144,7 +146,7 @@ def resolve_file_spec(fspec: str) -> list[str]:
             raise ValueError(f"Invalid file specifier {fspec}, * can only occur once")
         if not fspec.endswith("*"):
             raise ValueError(f"Invalid file specifier {fspec}, * has to be at the end of the specifier")
-        prefix = fspec[:-2]
+        prefix = fspec[:-1]
         prefix = os.path.abspath(prefix)
         if not os.path.isdir(prefix):
             raise ValueError(f"Invalid file specifier {fspec}, * prefix {prefix} is not a directory or doesn't exist")

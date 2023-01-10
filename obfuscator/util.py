@@ -153,7 +153,7 @@ def _walk_deptree(
     start: AST,
     lst: dict[str, list[str]],
 ):
-    print("-- FILE " + current_file + " --")
+    # print("-- FILE " + current_file + " --")
     if current_file in lst:
         return  # already visited
     for node in ast.walk(start):
