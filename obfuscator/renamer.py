@@ -8,16 +8,11 @@ class MappingGenerator(NodeVisitor):
     """
 
     def remap_name_if_needed(self, old):
-        """
-        Remaps the given name to a new one, if the mappings contain a name for it
-        :param old: The old name
-        :return:    The remapped name or old if no mapping was found
-        """
         sorted_names = list(self.mappings.keys())
         # Sort by longest (most specific) path first
-        sorted_names.sort(key=lambda v: grade_name_order(v.split(".")[1]), reverse=True)
+        sorted_names.sort(key=lambda v: grade_name_order(v.split(".")[0]), reverse=True)
         for x in sorted_names:
-            s_loc = x.split(".")[1]
+            s_loc = x.split(".")[0]
             location_split = s_loc.split("|")
             if len(location_split) == 1 and location_split[0] == "":
                 location_split = []
@@ -31,7 +26,7 @@ class MappingGenerator(NodeVisitor):
                         break
             else:
                 loc_matches = False
-            if loc_matches and x.split(".")[2] == old:
+            if loc_matches and x.split(".")[1] == old:
                 return self.mappings[x]
         return old
 
@@ -134,9 +129,8 @@ class MappingGenerator(NodeVisitor):
 
     def visit_arg(self, node: arg) -> Any:
         name = node.arg
-        if name != "self":  # maybe dont remap this one
-            nn = self.mapping_name("arg")
-            self.put_name_if_absent(name, nn)
+        nn = self.mapping_name("arg")
+        self.put_name_if_absent(name, nn)
 
     def visit_Lambda(self, node: Lambda) -> Any:
         self.start_visit("mt_<lambda>")

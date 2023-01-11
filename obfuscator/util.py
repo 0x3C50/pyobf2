@@ -4,7 +4,6 @@ import importlib.util
 import opcode
 import os.path
 import random
-import sys
 from ast import *
 from types import CodeType
 
