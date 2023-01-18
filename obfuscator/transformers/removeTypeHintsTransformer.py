@@ -1,5 +1,5 @@
-from _ast import FunctionDef, arg, AnnAssign, Assign, AST
-from ast import NodeTransformer
+from _ast import FunctionDef, arg, AnnAssign, Assign, AST, Constant
+from ast import NodeTransformer, dump
 from typing import Any
 
 from . import Transformer
@@ -18,7 +18,8 @@ class RemoveTypeHints(Transformer, NodeTransformer):
         return self.generic_visit(node)
 
     def visit_AnnAssign(self, node: AnnAssign) -> Any:
-        a = Assign(targets=[node.target], value=node.value)
+        # print(dump(node, indent=2))
+        a = Assign(targets=[node.target], value=node.value or Constant(None))
         return self.generic_visit(a)
 
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:

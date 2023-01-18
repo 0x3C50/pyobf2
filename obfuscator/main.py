@@ -12,18 +12,15 @@ from rich.progress import track
 from tomlkit import *
 
 from obfuscator.cfg import *
-from obfuscator.transformers.collector import Collector
-from obfuscator.transformers.compileFinalFiles import CompileFinalFiles
-from obfuscator.transformers.constructDynamicCodeObjTransformer import ConstructDynamicCodeObject
-from obfuscator.transformers.encodeStringsTransformer import EncodeStrings
-from obfuscator.transformers.fstrToFormatTransformer import FstringsToFormatSequence
-from obfuscator.transformers.intObfuscatorTransformer import IntObfuscator
-from obfuscator.transformers.memberRenamerTransformer import MemberRenamer
-from obfuscator.transformers.packPyz import PackInPyz
-from obfuscator.transformers.removeTypeHintsTransformer import RemoveTypeHints
-from obfuscator.transformers.replaceAttribsTransformer import ReplaceAttribs
-from obfuscator.transformers.unicodeNameTransformer import UnicodeNameTransformer
 from obfuscator.util import NonEscapingUnparser, get_dependency_tree
+from obfuscator import (
+    all_config_segments,
+    all_transformers,
+    do_obfuscation_batch_ast,
+    do_obfuscation_single_ast,
+    do_post_run,
+    get_current_config,
+)
 
 colorama.init()
 
@@ -45,28 +42,7 @@ general_settings = ConfigSegment(
     ),
 )
 
-all_config_segments = [general_settings]
-
-all_transformers = [
-    x()
-    for x in [
-        RemoveTypeHints,
-        FstringsToFormatSequence,
-        IntObfuscator,
-        EncodeStrings,
-        MemberRenamer,
-        ReplaceAttribs,
-        UnicodeNameTransformer,
-        ConstructDynamicCodeObject,
-        Collector,
-        CompileFinalFiles,
-        PackInPyz,
-    ]
-]
-
-for x in all_transformers:
-    x.console = console
-    all_config_segments.append(x.config)
+all_config_segments.insert(0, general_settings)
 
 
 def populate_with(doc: TOMLDocument, seg: ConfigSegment):
@@ -101,6 +77,8 @@ def parse_config(cfg: TOMLDocument):
 
 
 def main():
+    excd = get_current_config()
+    console.log(excd)
     if not os.path.exists(config_file):
         console.log("Configuration file does not exist, creating example...", style="red")
         example_cfg = generate_example_config()
@@ -181,7 +159,8 @@ def go_transitive():
     deptree = get_dependency_tree(input_file)
     if len(deptree) == 0:
         console.log(
-            "Transitive run with no dependencies, aborting\nSet transitive to false in your config.toml if you have only one file",
+            "Transitive run with no dependencies, aborting\nSet transitive to false in your config.toml if you have "
+            "only one file",
             style="red",
         )
         exit(1)
@@ -230,18 +209,16 @@ def go_transitive():
         exit(0)
     task_labels = [*["Transformer " + x.name for x in transformers_to_run], "Done"]
     with progress:
-        for trafo in transformers_to_run:
-            for index in range(len(all_files)):
-                task = all_tasks[index]
-                file = all_files[index]
-                progress.update(task, total=len(task_labels))
-                comp_i = progress._tasks[task].completed
-                if comp_i == 0:
-                    progress.start_task(task)
-                progress.update(
-                    task, total=len(task_labels), completed=comp_i + 1, description=task_labels[math.floor(comp_i)]
-                )
-                all_asts[index] = fix_missing_locations(trafo.transform(all_asts[index], file, all_asts, all_files))
+        for processed_file in do_obfuscation_batch_ast(all_asts, all_files):
+            index = processed_file["file_index"]
+            task = all_tasks[index]
+            progress.update(task, total=len(task_labels))
+            comp_i = progress._tasks[task].completed
+            if comp_i == 0:
+                progress.start_task(task)
+            progress.update(
+                task, total=len(task_labels), completed=comp_i + 1, description=task_labels[math.floor(comp_i)]
+            )
 
         for index in range(len(all_files)):
             task = all_tasks[index]
@@ -262,7 +239,7 @@ def go_transitive():
         try:
             src = NonEscapingUnparser().visit(out_ast)
         except Exception as e:
-            console.print_exception(max_frames=3)
+            console.print_exception(max_frames=999)
             if str(e) == "Unable to avoid backslash in f-string expression part":
                 console.log(
                     "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not able to escape ASCII characters in an "
@@ -277,8 +254,8 @@ def go_transitive():
             f.flush()
     console.log("Doing post run")
     all_outs = [Path(os.path.join(output_file, x[common_prefix_l:])) for x in all_files]
-    for trafo in transformers_to_run:
-        all_outs = trafo.transform_output(Path(output_file), all_outs)
+    ofp = Path(output_file)
+    do_post_run(ofp, all_outs)
     console.log("Done", style="green")
 
 
@@ -327,8 +304,7 @@ def go_single():
     compiled_ast: AST = ast.parse(inp_source)
     absolute_input_file = os.path.abspath(input_file)
     console.log("Obfuscating...")
-    for t in track(transformers_to_run, description="Obfuscating...", console=console):
-        compiled_ast = t.transform(compiled_ast, absolute_input_file, None, None)
+    compiled_ast = do_obfuscation_single_ast(compiled_ast, absolute_input_file)
     fix_missing_locations(compiled_ast)
     console.log("Re-structuring source...", style="#4f4f4f")
     try:
@@ -337,8 +313,10 @@ def go_single():
         console.print_exception(max_frames=3)
         if str(e) == "Unable to avoid backslash in f-string expression part":
             console.log(
-                "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not able to escape ASCII characters in an "
-                "F-String expression. Please check if you have any ASCII characters in F-Strings, and escape them manually. "
+                "[red]An error occurred with re-parsing the python AST into source code.[/red] AST was not able to "
+                "escape ASCII characters in an "
+                "F-String expression. Please check if you have any ASCII characters in F-Strings, and escape them "
+                "manually. "
             )
         exit(1)
         return
@@ -347,6 +325,5 @@ def go_single():
         f.write(src)
     console.log("Doing post run...")
     out_file_path = Path(output_file)
-    for t in track(transformers_to_run, description="Post run...", console=console):
-        t.transform_output(out_file_path.parent, [out_file_path])
+    do_post_run(out_file_path.parent, [out_file_path])
     console.log("Done", style="green")

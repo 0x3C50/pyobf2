@@ -62,8 +62,8 @@ class ConstructDynamicCodeObject(Transformer):
         self.code_obj_dict = dict()
         super().__init__(
             "dynamicCodeObjLauncher",
-            "Launches the program by constructing it from the ground up with dynamic code objects. This REQUIRES PYTHON 3.11",
-            encrypt=ConfigValue("Encrypts the bytecode with a dynamically generated AES key", True),
+            "Launches the program by constructing it from the ground up with dynamic code objects. This REQUIRES "
+            "PYTHON 3.11",
         )
 
     def get_all_code_objects(self, args):
@@ -171,205 +171,6 @@ class ConstructDynamicCodeObject(Transformer):
         )
         return finished_asm
 
-    def do_enc_pass(self, ast_mod: AST) -> Module:
-        """
-        forgive me
-        """
-        compiled_code_obj: CodeType = compile(ast_mod, "", "exec", optimize=2)
-        dumped = marshal.dumps(compiled_code_obj)
-        orig_fnc = FunctionDef(
-            name="b",
-            args=arguments(posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[]),
-            decorator_list=[],
-            body=[
-                Expr(Call(func=Name("print", Load()), args=[Constant("what'cha looking for?")], keywords=[])),
-                *[
-                    Assign(
-                        targets=[Name(rnd_name(), Store()) for _ in range(random.randint(3, 5))],
-                        value=Constant(random.randint(0, 65535)),
-                    )
-                    for _ in range(random.randint(3, 5))
-                ],
-            ],
-            type_ignores=[],
-        )
-        fix_missing_locations(orig_fnc)
-        p = compile(Module(body=[orig_fnc], type_ignores=[]), "", "exec", optimize=2)
-        key = hashlib.md5(
-            "".join(
-                map(
-                    repr,
-                    [
-                        p.co_consts[0].co_code,
-                        *p.co_consts[0].co_consts,
-                        *p.co_consts[0].co_names,
-                        *p.co_consts[0].co_varnames,
-                    ],
-                )
-            ).encode("utf8")
-        ).digest()
-        aes = AES.new(key, AES.MODE_EAX)
-        encrypted = aes.encrypt_and_digest(dumped)
-        nonce = aes.nonce
-        loader = Module(
-            body=[
-                ast_import_from("Crypto.Cipher", "AES"),
-                Expr(
-                    Call(
-                        func=Name("exec", Load()),
-                        args=[
-                            Call(
-                                func=Attribute(value=ast_import_full("marshal"), attr="loads", ctx=Load()),
-                                args=[
-                                    Call(
-                                        func=Attribute(
-                                            value=Call(
-                                                func=Attribute(value=Name("AES", Load()), attr="new", ctx=Load()),
-                                                args=[
-                                                    Call(
-                                                        func=Attribute(
-                                                            value=Call(
-                                                                func=Attribute(
-                                                                    value=ast_import_full("hashlib"),
-                                                                    attr="md5",
-                                                                    ctx=Load(),
-                                                                ),
-                                                                args=[
-                                                                    Call(
-                                                                        func=Attribute(
-                                                                            value=Call(
-                                                                                func=Attribute(
-                                                                                    value=Constant(""),
-                                                                                    attr="join",
-                                                                                    ctx=Load(),
-                                                                                ),
-                                                                                args=[
-                                                                                    Call(
-                                                                                        func=Name("map", Load()),
-                                                                                        args=[
-                                                                                            Name("repr", Load()),
-                                                                                            List(
-                                                                                                elts=[
-                                                                                                    Attribute(
-                                                                                                        Attribute(
-                                                                                                            Name(
-                                                                                                                "b",
-                                                                                                                Load(),
-                                                                                                            ),
-                                                                                                            "__code__",
-                                                                                                            Load(),
-                                                                                                        ),
-                                                                                                        "co_code",
-                                                                                                        Load(),
-                                                                                                    ),
-                                                                                                    Starred(
-                                                                                                        Attribute(
-                                                                                                            Attribute(
-                                                                                                                Name(
-                                                                                                                    "b",
-                                                                                                                    Load(),
-                                                                                                                ),
-                                                                                                                "__code__",
-                                                                                                                Load(),
-                                                                                                            ),
-                                                                                                            "co_consts",
-                                                                                                            Load(),
-                                                                                                        ),
-                                                                                                        Load(),
-                                                                                                    ),
-                                                                                                    Starred(
-                                                                                                        Attribute(
-                                                                                                            Attribute(
-                                                                                                                Name(
-                                                                                                                    "b",
-                                                                                                                    Load(),
-                                                                                                                ),
-                                                                                                                "__code__",
-                                                                                                                Load(),
-                                                                                                            ),
-                                                                                                            "co_names",
-                                                                                                            Load(),
-                                                                                                        ),
-                                                                                                        Load(),
-                                                                                                    ),
-                                                                                                    Starred(
-                                                                                                        Attribute(
-                                                                                                            Attribute(
-                                                                                                                Name(
-                                                                                                                    "b",
-                                                                                                                    Load(),
-                                                                                                                ),
-                                                                                                                "__code__",
-                                                                                                                Load(),
-                                                                                                            ),
-                                                                                                            "co_varnames",
-                                                                                                            Load(),
-                                                                                                        ),
-                                                                                                        Load(),
-                                                                                                    ),
-                                                                                                ],
-                                                                                                ctx=Load(),
-                                                                                            ),
-                                                                                        ],
-                                                                                        keywords=[],
-                                                                                    )
-                                                                                ],
-                                                                                keywords=[],
-                                                                            ),
-                                                                            attr="encode",
-                                                                            ctx=Load(),
-                                                                        ),
-                                                                        args=[Constant("utf8")],
-                                                                        keywords=[],
-                                                                    )
-                                                                ],
-                                                                keywords=[],
-                                                            ),
-                                                            attr="digest",
-                                                            ctx=Load(),
-                                                        ),
-                                                        args=[],
-                                                        keywords=[],
-                                                    ),
-                                                    Constant(9),  # MODE_EAX
-                                                    Constant(nonce),
-                                                ],
-                                                keywords=[],
-                                            ),
-                                            attr="decrypt",
-                                            ctx=Load(),
-                                        ),
-                                        args=[Constant(encrypted[0])],
-                                        keywords=[],
-                                    )
-                                ],
-                                keywords=[],
-                            )
-                        ],
-                        keywords=[],
-                    )
-                ),
-            ],
-            type_ignores=[],
-        )
-        fix_missing_locations(loader)
-        compiled_code_obj: CodeType = compile(loader, "", "exec", optimize=2)
-        tn = rnd_name()
-        main_loader = self.create_code_obj_loader(tn, compiled_code_obj)
-
-        return Module(
-            type_ignores=[],
-            body=[
-                orig_fnc,
-                main_loader,
-                Expr(
-                    Call(
-                        func=Name("exec", Load()), args=[Call(func=Name(tn, Load()), args=[], keywords=[])], keywords=[]
-                    )
-                ),
-            ],
-        )
-
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST | Module:
         if sys.version_info[0] < 3 or sys.version_info[1] < 11:
             self.console.log(
@@ -377,36 +178,34 @@ class ConstructDynamicCodeObject(Transformer):
             )
             return ast
         ast_mod = fix_missing_locations(ast)
-        if self.config["encrypt"].value:
-            return self.do_enc_pass(ast_mod)
-        else:
-            compiled_code_obj: CodeType = compile(ast_mod, bytes([0xDA, 0xAF, 0x1A, 0x87, 0xFF]), "exec", optimize=2)
-            all_code_objs = self.get_all_code_objects(self.args_from_co(compiled_code_obj))
 
-            loaders = []
-            for x in all_code_objs:  # create names first...
-                name = rnd_name()
-                self.code_obj_dict[x] = name
-            for x in all_code_objs:  # ... then use them
-                loaders.append(self.create_code_obj_loader(self.code_obj_dict[x], x))
-            main = rnd_name()
-            return Module(
-                type_ignores=[],
-                body=[
-                    FunctionDef(
-                        name="b",
-                        args=arguments(posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[]),
-                        body=[Pass()],
-                        decorator_list=[],
-                    ),
-                    *loaders,
-                    self.create_code_obj_loader(main, compiled_code_obj),
-                    Expr(
-                        Call(
-                            func=Name("exec", Load()),
-                            args=[Call(func=Name(main, Load()), args=[], keywords=[])],
-                            keywords=[],
-                        )
-                    ),
-                ],
-            )
+        compiled_code_obj: CodeType = compile(ast_mod, bytes([0xDA, 0xAF, 0x1A, 0x87, 0xFF]), "exec", optimize=2)
+        all_code_objs = self.get_all_code_objects(self.args_from_co(compiled_code_obj))
+
+        loaders = []
+        for x in all_code_objs:  # create names first...
+            name = rnd_name()
+            self.code_obj_dict[x] = name
+        for x in all_code_objs:  # ... then use them
+            loaders.append(self.create_code_obj_loader(self.code_obj_dict[x], x))
+        main = rnd_name()
+        return Module(
+            type_ignores=[],
+            body=[
+                FunctionDef(
+                    name="b",
+                    args=arguments(posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[]),
+                    body=[Pass()],
+                    decorator_list=[],
+                ),
+                *loaders,
+                self.create_code_obj_loader(main, compiled_code_obj),
+                Expr(
+                    Call(
+                        func=Name("exec", Load()),
+                        args=[Call(func=Name(main, Load()), args=[], keywords=[])],
+                        keywords=[],
+                    )
+                ),
+            ],
+        )
