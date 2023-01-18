@@ -325,7 +325,3 @@ def go_single():
     out_file_path = Path(output_file)
     do_post_run(out_file_path.parent, [out_file_path])
     console.log("Done", style="green")
-
-
-if __name__ == "__main__":
-    main()

@@ -4,7 +4,7 @@ import colorama
 from rich.console import Console
 from rich.panel import Panel
 
-import lib as obf
+import pyobf2.lib as obf
 
 colorama.init()
 cons = Console()

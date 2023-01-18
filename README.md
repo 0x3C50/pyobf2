@@ -11,7 +11,7 @@ Install with `python3 -m pip install pyobf2`
 
 The obfuscator has an API, to allow you to integrate it into your own projects. For example, it can be used to obfuscate the output of a code generator automatically. An example of this API being used can be seen in `api_example.py`. If you end up using the API, please credit this repository.
 
-If you just want to run the obfuscator, run `python3 -m pyobf2` after installing it
+If you just want to run the obfuscator, run `pyobf2` or `python3 -m pyobf2` after installing it
 
 ## API usage
 As previously mentioned, the `api_example.py` file contains examples on how the api works. Some notes are required, though:
