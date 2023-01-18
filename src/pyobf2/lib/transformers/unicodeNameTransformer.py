@@ -3,7 +3,7 @@ from _ast import Name, AST
 from ast import NodeVisitor
 from typing import Any
 
-from obfuscator.transformers import Transformer
+from . import Transformer
 
 import unicodedata
 

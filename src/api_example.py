@@ -4,7 +4,7 @@ import colorama
 from rich.console import Console
 from rich.panel import Panel
 
-import obfuscator as obf
+import lib as obf
 
 colorama.init()
 cons = Console()

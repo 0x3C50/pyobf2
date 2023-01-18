@@ -5,8 +5,8 @@ import struct
 import sys
 from types import CodeType
 
-from obfuscator.transformers import Transformer
-from obfuscator.util import strip_lnotab
+from . import Transformer
+from ..util import strip_lnotab
 
 
 def _pack_uint32(val):

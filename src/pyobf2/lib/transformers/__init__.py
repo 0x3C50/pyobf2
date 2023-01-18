@@ -4,8 +4,6 @@ import pathlib
 import random
 from ast import *
 
-import rich
-
 from ..cfg import ConfigSegment, ConfigValue
 from ..renamer import MappingGenerator, MappingApplicator
 
@@ -16,7 +14,6 @@ class Transformer(object):
         self.config = ConfigSegment(
             self.name, desc, enabled=ConfigValue("Enables this transformer", default_enabled), **add_config
         )
-        self.console: rich.Console = None
 
     def transform_output(self, output_location: pathlib.Path, all_files: list[pathlib.Path]) -> list[pathlib.Path]:
         return all_files

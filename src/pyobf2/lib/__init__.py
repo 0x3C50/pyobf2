@@ -2,22 +2,18 @@ import os.path
 import pathlib
 from ast import *
 
-from rich.console import Console
-
-from obfuscator.cfg import *
-from obfuscator.transformers.collector import Collector
-from obfuscator.transformers.compileFinalFiles import CompileFinalFiles
-from obfuscator.transformers.constructDynamicCodeObjTransformer import ConstructDynamicCodeObject
-from obfuscator.transformers.encodeStringsTransformer import EncodeStrings
-from obfuscator.transformers.fstrToFormatTransformer import FstringsToFormatSequence
-from obfuscator.transformers.intObfuscatorTransformer import IntObfuscator
-from obfuscator.transformers.memberRenamerTransformer import MemberRenamer
-from obfuscator.transformers.packPyz import PackInPyz
-from obfuscator.transformers.removeTypeHintsTransformer import RemoveTypeHints
-from obfuscator.transformers.replaceAttribsTransformer import ReplaceAttribs
-from obfuscator.transformers.unicodeNameTransformer import UnicodeNameTransformer
-
-console = Console()
+from .cfg import *
+from .transformers.collector import Collector
+from .transformers.compileFinalFiles import CompileFinalFiles
+from .transformers.constructDynamicCodeObjTransformer import ConstructDynamicCodeObject
+from .transformers.encodeStringsTransformer import EncodeStrings
+from .transformers.fstrToFormatTransformer import FstringsToFormatSequence
+from .transformers.intObfuscatorTransformer import IntObfuscator
+from .transformers.memberRenamerTransformer import MemberRenamer
+from .transformers.packPyz import PackInPyz
+from .transformers.removeTypeHintsTransformer import RemoveTypeHints
+from .transformers.replaceAttribsTransformer import ReplaceAttribs
+from .transformers.unicodeNameTransformer import UnicodeNameTransformer
 
 config_file = "config.toml"
 
@@ -41,7 +37,6 @@ all_transformers = [
 ]
 
 for x in all_transformers:
-    x.console = console
     all_config_segments.append(x.config)
 
 

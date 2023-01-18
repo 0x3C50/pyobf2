@@ -1,4 +1,3 @@
-import hashlib
 import marshal
 import random
 import sys
@@ -29,10 +28,7 @@ from ast import fix_missing_locations
 from types import CodeType
 from typing import Any, Callable
 
-from Crypto.Cipher import AES
-
-from . import Transformer, rnd_name, ast_import_from, ast_import_full
-from ..cfg import ConfigValue
+from . import Transformer, rnd_name
 from ..util import randomize_cache
 
 
@@ -173,9 +169,7 @@ class ConstructDynamicCodeObject(Transformer):
 
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST | Module:
         if sys.version_info[0] < 3 or sys.version_info[1] < 11:
-            self.console.log(
-                "Python [bold]3.11[/bold] or up is required to use dynamicCodeObjLauncher, skipping", style="red"
-            )
+            print("Python 3.11 or up is required to use dynamicCodeObjLauncher, skipping")
             return ast
         ast_mod = fix_missing_locations(ast)
 

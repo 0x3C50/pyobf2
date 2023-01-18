@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "pyobf2"
+version = "1.1.3"
+description = "An in-place obfuscator for python 3.11"
+authors = ["0x150 <99053360+0x3C50@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pycryptodome = "^3.16.0"
+rich = "^13.1.0"
+tomlkit = "^0.11.6"
+colorama = "^0.4.6"
+
+[tool.poetry.scripts]
+pyobf2 = "pyobf2:main"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

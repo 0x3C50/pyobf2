@@ -4,8 +4,8 @@ import shutil
 import tempfile
 import zipfile
 
-from obfuscator.cfg import ConfigValue
-from obfuscator.transformers import Transformer
+from ..cfg import ConfigValue
+from . import Transformer
 
 
 class PackInPyz(Transformer):
@@ -29,14 +29,13 @@ class PackInPyz(Transformer):
             mapped_file_names = [x.name for x in all_files]
         bs_file = self.config["bootstrap_file"].value
         if bs_file not in mapped_file_names:
-            self.console.log(
+            print(
                 "Cannot locate bootstrap file",
                 bs_file,
                 "in output paths. Available files are:",
                 mapped_file_names,
-                style="red",
             )
-            self.console.log("Skipping packInPyz")
+            print("Skipping packInPyz")
             return all_files
         tempdir = pathlib.Path(tempfile.mkdtemp())
         out_path = tempdir.joinpath("archive.pyz")
@@ -50,7 +49,7 @@ class PackInPyz(Transformer):
         shutil.rmtree(
             output_location,
             ignore_errors=False,
-            onerror=lambda a, b, c: self.console.log("Couldn't remove directory:", a, b, c, style="red"),
+            onerror=None,
         )
         output_location.mkdir(parents=True, exist_ok=True)
         fin = output_location.joinpath("archive.pyz")
@@ -63,10 +62,4 @@ class PackInPyz(Transformer):
         out_path.unlink()
         tempdir.rmdir()
 
-        self.console.log(
-            "Packed",
-            len(all_files),
-            f"file{'s' if len(all_files) != 1 else ''} into",
-            output_location.joinpath("archive.pyz"),
-        )
         return [fin]

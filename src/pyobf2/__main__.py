@@ -11,20 +11,20 @@ from rich.console import Console
 from rich.progress import track
 from tomlkit import *
 
-from obfuscator.cfg import *
-from obfuscator.util import NonEscapingUnparser, get_dependency_tree
-from obfuscator import (
+from pyobf2.lib import (
     all_config_segments,
     all_transformers,
     do_obfuscation_batch_ast,
     do_obfuscation_single_ast,
     do_post_run,
-    get_current_config,
 )
+from pyobf2.lib.cfg import *
+from pyobf2.lib.util import NonEscapingUnparser, get_dependency_tree
 
 colorama.init()
 
 console = Console()
+# __builtins__["print"] = console.log  # make it fancy
 
 config_file = "config.toml"
 
@@ -77,8 +77,6 @@ def parse_config(cfg: TOMLDocument):
 
 
 def main():
-    excd = get_current_config()
-    console.log(excd)
     if not os.path.exists(config_file):
         console.log("Configuration file does not exist, creating example...", style="red")
         example_cfg = generate_example_config()
@@ -155,7 +153,7 @@ def go_transitive():
     elif not os.path.isdir(output_file):
         console.log("Transitive obfuscation requires the output to be a directory", style="red")
         exit(1)
-    console.log("Parsing inheritance tree...", style="#4f4f4f")
+    console.log("Parsing inheritance tree...")
     deptree = get_dependency_tree(input_file)
     if len(deptree) == 0:
         console.log(
@@ -300,13 +298,13 @@ def go_single():
         console.log("Found one:", output_file, style="green")
     with open(input_file, "r", encoding="utf8") as f:
         inp_source = f.read()
-    console.log("Parsing AST...", style="#4f4f4f")
+    console.log("Parsing AST...")
     compiled_ast: AST = ast.parse(inp_source)
     absolute_input_file = os.path.abspath(input_file)
     console.log("Obfuscating...")
     compiled_ast = do_obfuscation_single_ast(compiled_ast, absolute_input_file)
     fix_missing_locations(compiled_ast)
-    console.log("Re-structuring source...", style="#4f4f4f")
+    console.log("Re-structuring source...")
     try:
         src = NonEscapingUnparser().visit(compiled_ast)
     except Exception as e:
@@ -320,10 +318,14 @@ def go_single():
             )
         exit(1)
         return
-    console.log("Writing...", style="#4f4f4f")
+    console.log("Writing...")
     with open(output_file, "w", encoding="utf8") as f:
         f.write(src)
     console.log("Doing post run...")
     out_file_path = Path(output_file)
     do_post_run(out_file_path.parent, [out_file_path])
     console.log("Done", style="green")
+
+
+if __name__ == "__main__":
+    main()
