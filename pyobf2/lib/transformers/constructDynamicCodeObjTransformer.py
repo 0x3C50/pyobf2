@@ -173,7 +173,7 @@ class ConstructDynamicCodeObject(Transformer):
             return ast
         ast_mod = fix_missing_locations(ast)
 
-        compiled_code_obj: CodeType = compile(ast_mod, bytes([0xDA, 0xAF, 0x1A, 0x87, 0xFF]), "exec", optimize=2)
+        compiled_code_obj: CodeType = compile(ast_mod, "", "exec", optimize=2)
         all_code_objs = self.get_all_code_objects(self.args_from_co(compiled_code_obj))
 
         loaders = []

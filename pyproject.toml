@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyobf2"
-version = "1.1.4"
+version = "1.1.5"
 description = "An in-place obfuscator for python 3.11"
 authors = ["0x150 <99053360+0x3C50@users.noreply.github.com>"]
 readme = "README.md"
