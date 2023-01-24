@@ -2,5 +2,5 @@ colorama==0.4.6
 commonmark==0.9.1
 pycryptodome==3.16.0
 Pygments==2.13.0
-rich==12.6.0
+rich~=13.1.0
 tomlkit==0.11.6
