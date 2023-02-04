@@ -311,7 +311,9 @@ class MappingApplicator(NodeVisitor):
             x.asname = self.remap_name_if_needed(x.asname)
         self.generic_visit(node)
 
-    def remap_name_if_needed(self, old):
+    def remap_name_if_needed(self, old, loc_stack=None):
+        if loc_stack is None:
+            loc_stack = self.location_stack
         sorted_names = list(self.mappings.keys())
         # Sort by longest (most specific) path first
         sorted_names.sort(key=lambda v: grade_name_order(v.split(".")[0]), reverse=True)
@@ -321,9 +323,9 @@ class MappingApplicator(NodeVisitor):
             if len(location_split) == 1 and location_split[0] == "":
                 location_split = []
             loc_matches = True
-            if len(self.location_stack) >= len(location_split):
+            if len(loc_stack) >= len(location_split):
                 for i in range(len(location_split)):
-                    current_loc_pos = self.location_stack[i]
+                    current_loc_pos = loc_stack[i]
                     existing_loc_pos = location_split[i]
                     if current_loc_pos != existing_loc_pos:
                         loc_matches = False
@@ -373,6 +375,14 @@ class MappingApplicator(NodeVisitor):
         node.name = self.remap_name_if_needed(node.name)
         self.generic_visit(node)
         self.end_visit()
+
+    def visit_Call(self, node: Call) -> Any:
+        if isinstance(node.func, Name):
+            # self.start_visit("mt_" + node.func.id)
+            for k in node.keywords:
+                k.arg = self.remap_name_if_needed(k.arg, ["mt_" + node.func.id])
+            # self.end_visit()
+        self.generic_visit(node)
 
     def visit_Name(self, node: Name) -> Any:
         node.id = self.remap_name_if_needed(node.id)
