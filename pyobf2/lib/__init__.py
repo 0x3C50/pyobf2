@@ -24,13 +24,13 @@ all_transformers = [
     for x in [
         RemoveTypeHints,
         FstringsToFormatSequence,
-        IntObfuscator,
         EncodeStrings,
+        IntObfuscator,
         MemberRenamer,
         ReplaceAttribs,
-        UnicodeNameTransformer,
         ConstructDynamicCodeObject,
         Collector,
+        UnicodeNameTransformer,
         CompileFinalFiles,
         PackInPyz,
     ]

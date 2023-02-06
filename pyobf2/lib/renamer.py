@@ -109,7 +109,7 @@ class MappingGenerator(NodeVisitor):
         self.location_stack.append(name)
 
     def end_visit(self):
-        self.location_stack.pop()
+        return self.location_stack.pop()
 
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
         name = node.name
@@ -131,6 +131,9 @@ class MappingGenerator(NodeVisitor):
         name = node.arg
         nn = self.mapping_name("arg")
         self.put_name_if_absent(name, nn)
+        old_stack = self.end_visit()
+        self.put_name_if_absent(old_stack + "_arg_" + name, nn)
+        self.start_visit(old_stack)
 
     def visit_Lambda(self, node: Lambda) -> Any:
         self.start_visit("mt_<lambda>")
@@ -340,7 +343,7 @@ class MappingApplicator(NodeVisitor):
         self.location_stack.append(name)
 
     def end_visit(self):
-        self.location_stack.pop()
+        return self.location_stack.pop()
 
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
         name = node.name
@@ -379,8 +382,15 @@ class MappingApplicator(NodeVisitor):
     def visit_Call(self, node: Call) -> Any:
         if isinstance(node.func, Name):
             # self.start_visit("mt_" + node.func.id)
+            prev = self.end_visit() if len(self.location_stack) > 0 else None
             for k in node.keywords:
-                k.arg = self.remap_name_if_needed(k.arg, ["mt_" + node.func.id])
+                search_str = "mt_" + node.func.id + "_arg_" + k.arg
+                res = self.remap_name_if_needed("mt_" + node.func.id + "_arg_" + k.arg)
+                if res == search_str:
+                    res = k.arg
+                k.arg = res
+            if prev is not None:
+                self.start_visit(prev)
             # self.end_visit()
         self.generic_visit(node)
 

@@ -33,7 +33,11 @@ def convert_char(ch: str) -> str:
 
 class UnicodeNameTransformer(Transformer, NodeVisitor):
     def __init__(self):
-        super().__init__("unicodeTransformer", "Converts names to equally valid, but weird looking unicode names")
+        super().__init__(
+            "unicodeTransformer",
+            "Converts names to equally valid, but weird looking unicode names\n"
+            "Does not work with compileFinalFiles, has to be source code",
+        )
 
     def transform(self, ast: AST, current_file_name: str, all_asts, all_file_names) -> AST:
         self.visit(ast)

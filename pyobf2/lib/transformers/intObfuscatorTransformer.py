@@ -17,7 +17,11 @@ from _ast import (
     List,
     Mult,
     keyword,
-    AST, BitXor, BitOr, LShift,
+    AST,
+    BitXor,
+    BitOr,
+    LShift,
+    RShift,
 )
 from ast import NodeTransformer
 from typing import Any
@@ -31,7 +35,12 @@ BT_TRUE = lambda: Constant(True)
 def transform_bits(node: Constant):
     ic: int = node.value
     if ic == 0:
-        return node
+        # True >> True, effectively 0
+        return BinOp(left=BT_TRUE(), op=RShift(), right=BT_TRUE())
+    if ic == 1:
+        return BinOp(  # True << True >> True
+            left=BinOp(left=BT_TRUE(), op=LShift(), right=BT_TRUE()), op=RShift(), right=BT_TRUE()
+        )
     bits = []
     while ic > 0:
         msk = ic & 0b1
@@ -41,20 +50,16 @@ def transform_bits(node: Constant):
     conv_bits = list(filter(lambda x: x[0] == 1, list(conv_bits)))
     if len(conv_bits) == 0:
         conv_bits = [(0, 0)]
-    sm = BinOp(
-        left=BT_TRUE(),  # this will always be true
-        op=LShift(),
-        right=Constant(conv_bits[0][1])
-    ) if conv_bits[0][1] != 0 else BT_TRUE()
+    sm = (
+        BinOp(left=BT_TRUE(), op=LShift(), right=Constant(conv_bits[0][1]))  # this will always be true
+        if conv_bits[0][1] != 0
+        else BT_TRUE()
+    )
     for x in conv_bits[1:]:
         sm = BinOp(
             left=sm,
             op=BitOr(),
-            right=BinOp(
-                left=BT_TRUE(),  # this will always be true
-                op=LShift(),
-                right=Constant(x[1])
-            )
+            right=BinOp(left=BT_TRUE(), op=LShift(), right=Constant(x[1])),  # this will always be true
         )
     return sm
 
@@ -84,9 +89,7 @@ def transform_decode(node: Constant):
                             left=Constant(value=off),
                             op=Sub(),
                             right=BinOp(
-                                left=Call(  # int(O)
-                                    func=Name("int", Load()), args=[Name("O", Load())], keywords=[]
-                                ),
+                                left=Call(func=Name("int", Load()), args=[Name("O", Load())], keywords=[]),  # int(O)
                                 op=Add(),
                                 right=Name("i", Load()),
                             ),
@@ -138,8 +141,11 @@ def transform_decode(node: Constant):
 
 class IntObfuscator(Transformer, NodeTransformer):
     def __init__(self):
-        super().__init__("intObfuscator", "Obscures int constants",
-                         mode=ConfigValue("How to obfuscate int constants\nPossible values: bits, decode", "bits"))
+        super().__init__(
+            "intObfuscator",
+            "Obscures int constants",
+            mode=ConfigValue("How to obfuscate int constants\nPossible values: bits, decode", "bits"),
+        )
 
     def visit_Constant(self, node: Constant) -> Any:
         s = self.generic_visit(node)
