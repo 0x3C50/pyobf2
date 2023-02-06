@@ -47,7 +47,8 @@ all_config_segments.insert(0, general_settings)
 
 def populate_with(doc: TOMLDocument, seg: ConfigSegment):
     tbl = table()
-    tbl.add(comment(seg.desc))
+    for x in [comment(y.strip()) for y in seg.desc.split("\n")]:
+        tbl.add(x)
     for k in seg.keys():
         v: ConfigValue = seg[k]
         for x in [comment(y.strip()) for y in v.desc.split("\n")]:

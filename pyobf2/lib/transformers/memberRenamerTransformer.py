@@ -24,6 +24,7 @@ class MemberRenamer(Transformer):
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
         generator = MappingGenerator(self.config["rename_format"].value)
         generator.visit(ast)
+        # generator.print_mappings()
         MappingApplicator(generator.mappings).visit(ast)
         if all_asts is not None:
             mappings1 = {}

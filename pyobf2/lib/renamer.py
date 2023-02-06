@@ -382,15 +382,17 @@ class MappingApplicator(NodeVisitor):
     def visit_Call(self, node: Call) -> Any:
         if isinstance(node.func, Name):
             # self.start_visit("mt_" + node.func.id)
-            prev = self.end_visit() if len(self.location_stack) > 0 else None
+            # print(self.location_stack)
+            # prev = self.end_visit() if len(self.location_stack) > 0 else None
             for k in node.keywords:
                 search_str = "mt_" + node.func.id + "_arg_" + k.arg
-                res = self.remap_name_if_needed("mt_" + node.func.id + "_arg_" + k.arg)
+                # print(self.location_stack, search_str)
+                res = self.remap_name_if_needed(search_str)
                 if res == search_str:
                     res = k.arg
                 k.arg = res
-            if prev is not None:
-                self.start_visit(prev)
+            # if prev is not None:
+            #     self.start_visit(prev)
             # self.end_visit()
         self.generic_visit(node)
 
