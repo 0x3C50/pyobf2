@@ -9,6 +9,7 @@ from .transformers.constructDynamicCodeObjTransformer import ConstructDynamicCod
 from .transformers.encodeStringsTransformer import EncodeStrings
 from .transformers.fstrToFormatTransformer import FstringsToFormatSequence
 from .transformers.intObfuscatorTransformer import IntObfuscator
+from .transformers.logicTransformer import LogicTransformer
 from .transformers.memberRenamerTransformer import MemberRenamer
 from .transformers.packPyz import PackInPyz
 from .transformers.removeTypeHintsTransformer import RemoveTypeHints
@@ -22,6 +23,7 @@ all_config_segments = []
 all_transformers = [
     x()
     for x in [
+        LogicTransformer,
         RemoveTypeHints,
         FstringsToFormatSequence,
         EncodeStrings,

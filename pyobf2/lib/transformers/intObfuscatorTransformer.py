@@ -1,45 +1,49 @@
-import ast
 import math
 import random
-from _ast import (
-    Constant,
-    Call,
-    Attribute,
-    Name,
-    Load,
-    Lambda,
-    arguments,
-    arg,
-    BinOp,
-    Sub,
-    Add,
-    Starred,
-    List,
-    Mult,
-    keyword,
-    AST,
-    BitXor,
-    BitOr,
-    LShift,
-    RShift,
-)
+from _ast import *
 from ast import NodeTransformer
 from typing import Any
 
 from . import Transformer
 from ..cfg import ConfigValue
 
-BT_TRUE = lambda: Constant(True)
+
+def bt():
+    return Constant(True)
+
+
+def transform_complement(node: Constant):
+    ic: int = node.value
+    radix = random.randint(3, 16)
+    ic = ic << radix
+    oc = ~ic
+    return BinOp(
+        left=BinOp(
+            left=BinOp(
+                left=UnaryOp(
+                    op=Invert(),
+                    operand=UnaryOp(
+                        op=Invert(),
+                        operand=Constant(oc))),
+                op=Add(),
+                right=Constant(True)),
+            op=Mult(),
+            right=UnaryOp(
+                op=Invert(),
+                operand=Constant(False))),
+        op=RShift(),
+        right=Constant(radix)
+    )
 
 
 def transform_bits(node: Constant):
     ic: int = node.value
     if ic == 0:
         # True >> True, effectively 0
-        return BinOp(left=BT_TRUE(), op=RShift(), right=BT_TRUE())
+        return BinOp(left=bt(), op=RShift(), right=bt())
     if ic == 1:
         return BinOp(  # True << True >> True
-            left=BinOp(left=BT_TRUE(), op=LShift(), right=BT_TRUE()), op=RShift(), right=BT_TRUE()
+            left=BinOp(left=bt(), op=LShift(), right=bt()), op=RShift(), right=bt()
         )
     bits = []
     while ic > 0:
@@ -51,15 +55,15 @@ def transform_bits(node: Constant):
     if len(conv_bits) == 0:
         conv_bits = [(0, 0)]
     sm = (
-        BinOp(left=BT_TRUE(), op=LShift(), right=Constant(conv_bits[0][1]))  # this will always be true
+        BinOp(left=bt(), op=LShift(), right=Constant(conv_bits[0][1]))  # this will always be true
         if conv_bits[0][1] != 0
-        else BT_TRUE()
+        else bt()
     )
     for x in conv_bits[1:]:
         sm = BinOp(
             left=sm,
             op=BitOr(),
-            right=BinOp(left=BT_TRUE(), op=LShift(), right=Constant(x[1])),  # this will always be true
+            right=BinOp(left=bt(), op=LShift(), right=Constant(x[1])),  # this will always be true
         )
     return sm
 
@@ -144,21 +148,23 @@ class IntObfuscator(Transformer, NodeTransformer):
         super().__init__(
             "intObfuscator",
             "Obscures int constants",
-            mode=ConfigValue("How to obfuscate int constants\nPossible values: bits, decode", "bits"),
+            mode=ConfigValue("How to obfuscate int constants\nPossible values: bits, complement, decode", "bits"),
         )
 
     def visit_Constant(self, node: Constant) -> Any:
         s = self.generic_visit(node)
         if type(node.value) == int:
-            if self.config["mode"].value == "decode":
+            val = self.config["mode"].value
+            if val == "decode":
                 return transform_decode(node)
-            else:
+            elif val == "bits":
                 tfb = transform_bits(node)
-                # print(ast.dump(tfb, indent=2))
                 return self.generic_visit(tfb)
+            elif val == "complement":
+                return transform_complement(node)
         return s
 
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
-        if self.config["mode"].value not in ("bits", "decode"):
+        if self.config["mode"].value not in ("bits", "decode", "complement"):
             raise ValueError("Invalid mode " + self.config["mode"].value)
         return self.visit(ast)
