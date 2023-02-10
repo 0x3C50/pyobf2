@@ -19,7 +19,7 @@ class MemberRenamer(Transformer):
                 "value\n"
                 "'random_identifier(length)' returns a valid python identifier, according to "
                 "https://docs.python.org/3/reference/lexical_analysis.html#identifiers",
-                "f'{kind}{get_counter(kind)}{random_identifier(16)}'",
+                "f'{kind}{get_counter(kind)}'",
             ),
         )
 
