@@ -16,8 +16,10 @@ class MemberRenamer(Transformer):
                 "'counter' is a variable incrementing with each name generated\n"
                 "'kind' is either 'method', 'var', 'arg' or 'class', depending on the current element\n"
                 "'get_counter(name)' is a method that increments a counter behind 'name', and returns its current "
-                "value",
-                "f'{kind}{get_counter(kind)}'",
+                "value\n"
+                "'random_identifier(length)' returns a valid python identifier, according to "
+                "https://docs.python.org/3/reference/lexical_analysis.html#identifiers",
+                "f'{kind}{get_counter(kind)}{random_identifier(16)}'",
             ),
         )
 

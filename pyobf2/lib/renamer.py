@@ -1,5 +1,18 @@
+import random
+import string
 from ast import *
 from typing import Any
+
+
+def random_identifier(length: int):
+    if length <= 0:
+        raise ValueError("length expected to be <= 1, got " + str(length))
+    valid_chars = string.ascii_letters + "_"
+    built = ""
+    built += random.choice(valid_chars)
+    for i in range(length - 1):
+        built += random.choice(valid_chars + string.digits)
+    return built
 
 
 class MappingGenerator(NodeVisitor):
@@ -40,7 +53,13 @@ class MappingGenerator(NodeVisitor):
     def mapping_name(self, for_type: str):
         fmt = self.fmt
         generated_name = eval(
-            fmt, {"counter": self.counter_shit("cnt"), "kind": for_type, "get_counter": self.counter_shit}
+            fmt,
+            {
+                "counter": self.counter_shit("cnt"),
+                "kind": for_type,
+                "get_counter": self.counter_shit,
+                "random_identifier": random_identifier,
+            },
         )
         if type(generated_name) != str:
             generated_name = str(generated_name)
