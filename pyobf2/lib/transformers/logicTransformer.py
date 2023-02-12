@@ -1,4 +1,3 @@
-import random
 from typing import Any
 
 from . import *
@@ -12,20 +11,14 @@ def _generator_if_and(node: If):
             node.test,
             Compare(
                 left=Call(
-                    func=Attribute(
-                        value=ast_import_full("random"),
-                        attr='betavariate',
-                        ctx=Load()
-                    ),
+                    func=Attribute(value=ast_import_full("random"), attr="betavariate", ctx=Load()),
                     args=[Constant(random.uniform(1, 100)), Constant(random.uniform(1, 100))],
-                    keywords=[]
+                    keywords=[],
                 ),
                 ops=[NotEq()],
-                comparators=[
-                    Constant(random.uniform(1.1, 100))
-                ]
-            )
-        ]
+                comparators=[Constant(random.uniform(1.1, 100))],
+            ),
+        ],
     )
 
 
@@ -36,20 +29,14 @@ def _generator_if_or(node: If):
             node.test,
             Compare(
                 left=Call(
-                    func=Attribute(
-                        value=ast_import_full("random"),
-                        attr='betavariate',
-                        ctx=Load()
-                    ),
+                    func=Attribute(value=ast_import_full("random"), attr="betavariate", ctx=Load()),
                     args=[Constant(random.uniform(1, 100)), Constant(random.uniform(1, 100))],
-                    keywords=[]
+                    keywords=[],
                 ),
                 ops=[Eq()],
-                comparators=[
-                    Constant(random.uniform(1.1, 100))
-                ]
-            )
-        ]
+                comparators=[Constant(random.uniform(1.1, 100))],
+            ),
+        ],
     )
 
 
@@ -64,15 +51,7 @@ def create_equivalent_dogshit(node: If) -> If:
 def wrap_cond(node: If):
     radix = random.randint(3, 16)
     node.test = Compare(
-        left=BinOp(
-            left=node.test,
-            op=LShift(),
-            right=Constant(radix)
-        ),
-        ops=[Eq()],
-        comparators=[
-            Constant(1 << radix)
-        ]
+        left=BinOp(left=node.test, op=LShift(), right=Constant(radix)), ops=[Eq()], comparators=[Constant(1 << radix)]
     )
 
 

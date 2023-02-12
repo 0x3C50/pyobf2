@@ -29,6 +29,7 @@ from types import CodeType
 from typing import Any, Callable
 
 from . import Transformer, rnd_name
+from ..log import warn_simple
 from ..util import randomize_cache
 
 
@@ -169,7 +170,7 @@ class ConstructDynamicCodeObject(Transformer):
 
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST | Module:
         if sys.version_info[0] < 3 or sys.version_info[1] < 11:
-            print("Python 3.11 or up is required to use dynamicCodeObjLauncher, skipping")
+            warn_simple("dynamicCodeObjLauncher", "Python 3.11 or up is required to use this transformer, skipping")
             return ast
         ast_mod = fix_missing_locations(ast)
 

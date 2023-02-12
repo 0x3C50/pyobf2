@@ -12,3 +12,7 @@ def warn(source_file: str, source_ast: AST, warning: str):
     log_msg += "\n" + "\n".join(map(lambda x: " " * (additional_whitespaces + 1) + prefix + x, unparsed.split("\n")))
 
     print(log_msg)
+
+
+def warn_simple(source: str, warning: str):
+    print(f"warn({source}): {warning}")

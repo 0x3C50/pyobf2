@@ -7,6 +7,7 @@ from .transformers.collector import Collector
 from .transformers.compileFinalFiles import CompileFinalFiles
 from .transformers.constructDynamicCodeObjTransformer import ConstructDynamicCodeObject
 from .transformers.encodeStringsTransformer import EncodeStrings
+from .transformers.floatsToComplex import FloatsToComplex
 from .transformers.fstrToFormatTransformer import FstringsToFormatSequence
 from .transformers.intObfuscatorTransformer import IntObfuscator
 from .transformers.logicTransformer import LogicTransformer
@@ -27,6 +28,7 @@ all_transformers = [
         RemoveTypeHints,
         FstringsToFormatSequence,
         EncodeStrings,
+        FloatsToComplex,
         IntObfuscator,
         MemberRenamer,
         ReplaceAttribs,
