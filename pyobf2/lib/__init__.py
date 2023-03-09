@@ -15,6 +15,7 @@ from .transformers.memberRenamerTransformer import MemberRenamer
 from .transformers.packPyz import PackInPyz
 from .transformers.removeTypeHintsTransformer import RemoveTypeHints
 from .transformers.replaceAttribsTransformer import ReplaceAttribs
+from .transformers.typeAliasTransformer import TypeAliasTransformer
 from .transformers.unicodeNameTransformer import UnicodeNameTransformer
 
 config_file = "config.toml"
@@ -31,6 +32,7 @@ all_transformers = [
         FloatsToComplex,
         IntObfuscator,
         MemberRenamer,
+        TypeAliasTransformer,
         ReplaceAttribs,
         ConstructDynamicCodeObject,
         Collector,

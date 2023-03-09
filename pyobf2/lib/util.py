@@ -6,6 +6,7 @@ import os.path
 import random
 from ast import *
 from types import CodeType
+import string
 
 _SINGLE_QUOTES = ("'", '"')
 _MULTI_QUOTES = ('"""', "'''")
@@ -216,3 +217,13 @@ def strip_lnotab(c: CodeType) -> CodeType:
             item = strip_lnotab(item)
         consts.append(item)
     return c.replace(co_linetable=b"", co_consts=tuple(consts))
+
+def random_identifier(length: int):
+    if length <= 0:
+        raise ValueError("length expected to be <= 1, got " + str(length))
+    valid_chars = string.ascii_letters + "_"
+    built = ""
+    built += random.choice(valid_chars)
+    for i in range(length - 1):
+        built += random.choice(valid_chars + string.digits)
+    return built

@@ -2,7 +2,6 @@ import math
 from typing import Any
 
 from . import *
-from ast import *
 
 
 def decoder_int(c: int):
@@ -35,10 +34,23 @@ class FloatsToComplex(Transformer, NodeTransformer):
         t = type(val)
         if t != int and t != float:
             return self.generic_visit(node)
+        negate = False
+        if val < 0:
+            # negative input, we cant really use this so we'll invert it and put it back later
+            negate = True
+            val = abs(val)
+        di = None
         if t == int:
-            return decoder_int(val)
+            di = decoder_int(val)
         elif t == float:
-            return decoder_float(val)
+            di = decoder_float(val)
+        assert di is not None
+        if negate:
+            di = UnaryOp(
+                USub(),
+                di
+            )
+        return di
 
     def transform(self, ast: AST, current_file_name, all_asts, all_file_names) -> AST:
         return self.visit(ast)
