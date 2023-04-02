@@ -56,6 +56,7 @@ class StringCollectorTransformer(Transformer, NodeTransformer):
         self.in_formatted_v = False
         t = self.generic_visit(node)
         self.in_formatted_v = prev
+
         return t
 
     def visit_Constant(self, node: Constant) -> Any:
