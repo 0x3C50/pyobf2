@@ -113,13 +113,17 @@ class Imported:
 def get_file_from_import(name: str, parent: str, path: list[str]):
     try:
         resname = importlib.util.resolve_name(name, parent)
+        # print(name, parent, path, resname)
         searchfor = resname.split(".")
         for p in path:
             current_path = p
             visited_path = []
             for x in searchfor:
                 visited_path.append(x)
+                # print(visited_path)
                 current_path = os.path.join(current_path, x)
+                if not os.path.exists(current_path):
+                    return None
                 if os.path.isdir(current_path):  # this segment points to a folder, continue
                     continue
                 elif os.path.isfile(current_path + ".py"):  # we reached an end, the rest is speculation
@@ -164,6 +168,8 @@ def _walk_deptree(
                     [get_file_from_import(x.name, current_package, search_path) for x in node.names],
                 )
             )
+
+            # print(discorvered_specs)
             if current_file not in lst:
                 lst[current_file] = []
 
@@ -217,6 +223,7 @@ def strip_lnotab(c: CodeType) -> CodeType:
             item = strip_lnotab(item)
         consts.append(item)
     return c.replace(co_linetable=b"", co_consts=tuple(consts))
+
 
 def random_identifier(length: int):
     if length <= 0:

@@ -156,17 +156,19 @@ def go_transitive():
         exit(1)
     console.log("Parsing inheritance tree...")
     deptree = get_dependency_tree(input_file)
-    if len(deptree) == 0:
+    if len(deptree) == 0 and len(general_settings["manual_include"].value) == 0:
         console.log(
             "Transitive run with no dependencies, aborting\nSet transitive to false in your config.toml if you have "
             "only one file",
             style="red",
         )
         exit(1)
-    common_prefix_l = len(os.path.commonpath(list(map(lambda x: os.path.dirname(x) + "/", deptree.keys())))) + 1
-    tree = rich.tree.Tree(os.path.abspath(input_file)[common_prefix_l:], style="green")
-    recurse_tree_inner(deptree, deptree[os.path.abspath(input_file)], common_prefix_l, tree)
-    console.log(tree)
+    if len(deptree) != 0:
+        common_prefix_l = len(os.path.commonpath(list(map(lambda x: os.path.dirname(x) + "/", deptree.keys())))) + 1
+        tree = rich.tree.Tree(os.path.abspath(input_file)[common_prefix_l:], style="green")
+        # console.log(deptree)
+        recurse_tree_inner(deptree, deptree[os.path.abspath(input_file)], common_prefix_l, tree)
+        console.log(tree)
     all_files = []
     for x in deptree.keys():
         if x not in all_files:
@@ -230,6 +232,7 @@ def go_transitive():
     console.log("Writing")
     for i in range(len(all_files)):
         file = all_files[i]
+        console.log("... " + file)
         out_ast = all_asts[i]
         full_path = os.path.join(output_file, file[common_prefix_l:])
         dname = os.path.dirname(full_path)
@@ -246,7 +249,6 @@ def go_transitive():
                 )
                 console.log("Current file:", full_path)
             exit(1)
-            return
 
         with open(full_path, "w", encoding="utf8") as f:
             f.write(src)

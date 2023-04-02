@@ -17,6 +17,7 @@ from .transformers.removeTypeHintsTransformer import RemoveTypeHints
 from .transformers.replaceAttribsTransformer import ReplaceAttribs
 from .transformers.typeAliasTransformer import TypeAliasTransformer
 from .transformers.unicodeNameTransformer import UnicodeNameTransformer
+from .transformers.stringCollectorTransformer import StringCollectorTransformer
 
 config_file = "config.toml"
 
@@ -29,6 +30,7 @@ all_transformers = [
         RemoveTypeHints,
         FstringsToFormatSequence,
         EncodeStrings,
+        StringCollectorTransformer,
         FloatsToComplex,
         IntObfuscator,
         MemberRenamer,
