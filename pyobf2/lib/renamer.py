@@ -66,10 +66,25 @@ class MappingGenerator(NodeVisitor):
         return generated_name
 
     def __init__(self, fmt):
+        self.skip_args = False
         self.fmt = fmt
         self.counters = {}
         self.mappings = {}
         self.location_stack = []
+        self.tabu_method_arguments = []
+
+    def go(self, s: AST):
+        for node in walk(s):
+            if isinstance(node, Call) and isinstance(node.func, Name):
+                has_tabu_arg = len(node.keywords) > 0 and any(map(lambda p: p.arg is None, node.keywords))
+                if has_tabu_arg:
+                    # suboptimal condition:
+                    # the user called the method with `method(**args)`. this is dogshit because args is a map we don't
+                    #   know the contents of.
+                    # since the keys of the map could be fucking anything, we can't reliably change them.
+                    # equally suboptimal fix: just don't remap that specific method's parameters :/
+                    self.tabu_method_arguments.append(node.func.id)
+        self.visit(s)
 
     def visit_Global(self, node: Global) -> Any:
         for i in range(len(node.names)):
@@ -136,8 +151,15 @@ class MappingGenerator(NodeVisitor):
         if not any(x.startswith("cl_") for x in self.location_stack):
             self.put_name_if_absent(name, self.mapping_name("method"))
         self.start_visit("mt_" + name)
-        self.generic_visit(node)
-        self.end_visit()
+        if name in self.tabu_method_arguments:
+            before = self.skip_args
+            self.skip_args = True
+            self.generic_visit(node)
+            self.end_visit()
+            self.skip_args = before
+        else:
+            self.generic_visit(node)
+            self.end_visit()
 
     def visit_AsyncFunctionDef(self, node: AsyncFunctionDef) -> Any:
         name = node.name
@@ -148,10 +170,13 @@ class MappingGenerator(NodeVisitor):
 
     def visit_arg(self, node: arg) -> Any:
         name = node.arg
-        nn = self.mapping_name("arg")
-        self.put_name_if_absent(name, nn)
+        nn = None
+        if not self.skip_args:
+            nn = self.mapping_name("arg")
+            self.put_name_if_absent(name, nn)
         old_stack = self.end_visit()
-        self.put_name_if_absent(old_stack + "_arg_" + name, nn)
+        if not self.skip_args:
+            self.put_name_if_absent(old_stack + "_arg_" + name, nn)
         self.start_visit(old_stack)
 
     def visit_Lambda(self, node: Lambda) -> Any:
@@ -400,19 +425,14 @@ class MappingApplicator(NodeVisitor):
 
     def visit_Call(self, node: Call) -> Any:
         if isinstance(node.func, Name):
-            # self.start_visit("mt_" + node.func.id)
-            # print(self.location_stack)
-            # prev = self.end_visit() if len(self.location_stack) > 0 else None
             for k in node.keywords:
+                if k.arg is None:
+                    continue  # isn't mapped anyway
                 search_str = "mt_" + node.func.id + "_arg_" + k.arg
-                # print(self.location_stack, search_str)
                 res = self.remap_name_if_needed(search_str)
                 if res == search_str:
                     res = k.arg
                 k.arg = res
-            # if prev is not None:
-            #     self.start_visit(prev)
-            # self.end_visit()
         self.generic_visit(node)
 
     def visit_Name(self, node: Name) -> Any:

@@ -60,7 +60,7 @@ def collect_fstring_consts(node: JoinedStr) -> str:
 
 def optimize_ast(ast1: AST):
     generator = MappingGenerator('f"{kind[0]}{get_counter(kind)}"')
-    generator.visit(ast1)
+    generator.go(ast1)
     MappingApplicator(generator.mappings).visit(ast1)
     for x in ast.walk(ast1):
         if isinstance(x, (AsyncFunctionDef, FunctionDef, ClassDef, Module)):
