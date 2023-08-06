@@ -22,7 +22,7 @@ if __name__ == "__main__":
 
 Obfuscating it with some common obfuscator may result in this program:
 ```py
-import lzma, gzip, zlib, base64
+import lzma,gzip,zlib,base64
 exec(lzma.decompress(gzip.decompress(zlib.decompress(base64.a85decode(b'GanfH!(?i/M[0;*H@\'0(rrJnq>Q=X\\H<=>N!!MH8Zpk)s+TW>Y!!%*ojeL`6JH0.b!&>E_s%a=KI_.BiVuHH@Ze*#DT<W^8FO?SoOTWE,4ZNU`I=A`@,6[Lp^AP2+$I]]Sg+.bi.LDR=1q-\'(Y_]K^crG<0D%=2pb;>5nY[.Fr-F-@W-<MRn<(;S>r1.L$!!)tqp>Q!Ra_(SSIY%S#!!)mYkCKnVBDV`1!!!!%=^(#9?@J[M!!"^a:%J')))))
 ```
 
