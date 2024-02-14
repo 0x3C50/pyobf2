@@ -1,3 +1,6 @@
+# Warning
+This project is more or less abandoned. I have better things to do than to make sense of Python's design decisions. What even is a `nonlocal`??
+
 # PyObf 2
 
 A python obfuscator that actually understands your program.
