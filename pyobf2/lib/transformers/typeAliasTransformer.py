@@ -15,10 +15,8 @@ class TypeAliasTransformer(Transformer, NodeTransformer):
                              "int",
                              "float",
                              "filter",
-                             "bool",
                              "bytes",
                              "map",
-                             "range"
                          ])
                          )
         self.entries = []
